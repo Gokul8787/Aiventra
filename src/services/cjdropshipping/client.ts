@@ -8,7 +8,7 @@ export async function cjFetch(endpoint: string, options: RequestInit = {}) {
   const response = await fetch(`${BASE_URL}${endpoint}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
+      "CJ-Access-Token": token,
       "Content-Type": "application/json",
       ...(options.headers || {}),
     },

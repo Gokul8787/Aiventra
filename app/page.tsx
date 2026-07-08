@@ -93,6 +93,14 @@ export default function Home() {
                   <th className="pb-3">Supplier</th>
                   <th className="pb-3">Sell Price</th>
                   <th className="pb-3">Margin</th>
+                  <th className="pb-3">Demand</th>
+                  <th className="pb-3">Competition</th>
+                  <th className="pb-3">Profit</th>
+                  <th className="pb-3">Shipping</th>
+                  <th className="pb-3">Supplier</th>
+                  <th className="pb-3">Reviews</th>
+                  <th className="pb-3">Seasonality</th>
+                  <th className="pb-3">Confidence</th>
                   <th className="pb-3">AI Score</th>
                   <th className="pb-3">Reason</th>
                 </tr>
@@ -106,6 +114,30 @@ export default function Home() {
                     <td>£{product.supplierPrice}</td>
                     <td>£{product.sellPrice}</td>
                     <td>{product.profitMargin}%</td>
+                    <td>{product.intelligence?.demand?.demandScore ?? "-"}%</td>
+                    <td>
+                      {product.intelligence?.competition
+                        ?.competitionOpportunityScore ?? "-"}
+                      %
+                    </td>
+                    <td>{product.intelligence?.profit?.profitScore ?? "-"}%</td>
+                    <td>
+                      {product.intelligence?.shipping?.shippingScore ?? "-"}%
+                    </td>
+                    <td>
+                      {product.intelligence?.supplier?.supplierScore ?? "-"}%
+                    </td>
+                    <td>
+                      {product.intelligence?.reviews?.reviewScore ?? "-"}%
+                    </td>
+                    <td>
+                      {product.intelligence?.seasonality?.seasonalityScore ??
+                        "-"}
+                      %
+                    </td>
+                    <td>
+                      {product.intelligence?.confidence?.confidenceScore ?? "-"}%
+                    </td>
                     <td className="font-bold text-blue-400">
                       {product.aiScore}/100
                     </td>

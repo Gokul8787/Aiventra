@@ -1,15 +1,16 @@
 type CJTokenResponse = {
   code: number;
-  result?: {
+  result: boolean;
+  message?: string;
+  data?: {
     accessToken: string;
     refreshToken: string;
     accessTokenExpiryDate: string;
     refreshTokenExpiryDate: string;
   };
-  message?: string;
 };
 
-let cachedToken: CJTokenResponse["result"] | null = null;
+let cachedToken: CJTokenResponse["data"] | null = null;
 
 export async function getCJAccessToken(): Promise<string> {
   if (cachedToken && new Date(cachedToken.accessTokenExpiryDate) > new Date()) {
@@ -31,11 +32,11 @@ export async function getCJAccessToken(): Promise<string> {
 
   const data: CJTokenResponse = await response.json();
 
-  if (!response.ok || data.code !== 200 || !data.result?.accessToken) {
+  if (!response.ok || data.code !== 200 || !data.data?.accessToken) {
     throw new Error(data.message || "Failed to get CJ access token");
   }
 
-  cachedToken = data.result;
+  cachedToken = data.data;
 
   return cachedToken.accessToken;
 }

@@ -11,4 +11,5 @@ export interface Product {
   profitMargin: number;
   aiScore: number;
   reason: string;
+  intelligence?: any;
 }
