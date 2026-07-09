@@ -42,10 +42,16 @@ export default function Home() {
     setLoading(false);
   }
 
-  async function generatePublishing() {
+  async function generatePublishing(product: Product) {
     setPublishingLoading(true);
 
-    const response = await fetch("/api/ai/publishing");
+    const response = await fetch("/api/ai/publishing", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ product }),
+    });
     const data = await response.json();
 
     setPublishingPackage(data.publishingPackage || null);
@@ -89,7 +95,7 @@ export default function Home() {
           <Button text="📈 Analyze Market" />
 
           <button
-            onClick={generatePublishing}
+            onClick={() => bestProduct && generatePublishing(bestProduct)}
             className="rounded-xl bg-cyan-600 px-6 py-3 font-semibold hover:bg-cyan-500"
           >
             {publishingLoading ? "Generating..." : "📝 Generate Listing"}
@@ -181,7 +187,7 @@ export default function Home() {
 
                 <div className="mt-5 flex gap-3">
                   <button
-                    onClick={generatePublishing}
+                    onClick={() => generatePublishing(product)}
                     className="flex-1 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold hover:bg-cyan-500"
                   >
                     Generate Listing

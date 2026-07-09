@@ -1,41 +1,28 @@
 import { NextResponse } from "next/server";
-import { collectTrendingProducts } from "@/ai/agents/trendCollector";
-import { analyzeProductIntelligence } from "@/ai/intelligence/productIntelligenceEngine";
-import { getTopRecommendations } from "@/ai/agents/recommendationEngine";
+import { Product } from "@/ai/types/product";
 import { generatePublishingPackage } from "@/ai/publishing/publishingEngine";
 
-export async function GET() {
+export async function POST(request: Request) {
   try {
-    const { products } = await collectTrendingProducts();
+    const body = await request.json();
+    const product = body.product as Product;
 
-    const intelligentProducts = products.map((product) => {
-      const intelligence = analyzeProductIntelligence(product);
-
-      return {
-        ...product,
-        aiScore: intelligence.overallScore,
-        intelligence,
-      };
-    });
-
-    const [bestProduct] = getTopRecommendations(intelligentProducts, 1);
-
-    if (!bestProduct) {
+    if (!product) {
       return NextResponse.json(
-        { success: false, message: "No recommended product found" },
-        { status: 404 }
+        { success: false, message: "Product is required" },
+        { status: 400 }
       );
     }
 
     const publishingPackage = await generatePublishingPackage({
-      product: bestProduct,
+      product,
       brandName: "Aiventra",
       targetMarket: "United Kingdom",
     });
 
     return NextResponse.json({
       success: true,
-      product: bestProduct,
+      product,
       publishingPackage,
       generatedAt: new Date().toISOString(),
     });

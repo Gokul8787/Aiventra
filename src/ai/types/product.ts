@@ -1,3 +1,5 @@
+import { ProductIntelligence } from "@/ai/intelligence/productIntelligenceTypes";
+
 export interface Product {
   id: string;
   name: string;
@@ -18,5 +20,5 @@ export interface Product {
   stock?: number;
   averageRating?: number;
   reviewCount?: number;
-  intelligence?: any;
+  intelligence?: ProductIntelligence;
 }
