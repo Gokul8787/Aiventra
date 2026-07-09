@@ -7,11 +7,13 @@ export interface CJProductListItem {
   productSku?: string;
   bigImage?: string;
   productImage?: string;
+  productUrl?: string;
   sellPrice?: string;
   nowPrice?: string;
   discountPrice?: string;
   listedNum?: number;
   listingCount?: number;
+  inventoryNum?: number;
   categoryId?: string;
   categoryName?: string;
   threeCategoryName?: string;

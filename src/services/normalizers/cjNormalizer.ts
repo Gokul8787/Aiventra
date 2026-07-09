@@ -23,5 +23,12 @@ export function normalizeCJProduct(item: CJProductListItem): Product {
     profitMargin: 0,
     aiScore: 0,
     reason: "",
+    imageUrl: item.productImage || item.bigImage,
+    sourceUrl: item.productUrl,
+    provider: "cjdropshipping",
+    currency: "GBP",
+    stock: item.inventoryNum || item.warehouseInventoryNum || 0,
+    averageRating: 0,
+    reviewCount: 0,
   };
 }

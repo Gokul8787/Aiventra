@@ -11,5 +11,12 @@ export interface Product {
   profitMargin: number;
   aiScore: number;
   reason: string;
+  imageUrl?: string;
+  sourceUrl?: string;
+  provider?: string;
+  currency?: string;
+  stock?: number;
+  averageRating?: number;
+  reviewCount?: number;
   intelligence?: any;
 }
