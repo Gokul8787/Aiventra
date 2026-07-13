@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { collectTrendingProducts } from "@/ai/agents/trendCollector";
 import { addReasoning } from "@/ai/agents/reasoningEngine";
-import { getTopRecommendations } from "@/ai/agents/recommendationEngine";
+import {
+  getTopRecommendations,
+  RECOMMENDATION_THRESHOLD,
+} from "@/ai/agents/recommendationEngine";
 import { generateProductInsight } from "@/ai/agents/productInsightAgent";
 import { analyzeProductIntelligence } from "@/ai/intelligence/productIntelligenceEngine";
+import { persistProductHunterRun } from "@/services/productHunter/persistProductHunterRun";
 
 export async function GET() {
   try {
@@ -26,15 +30,27 @@ export async function GET() {
       }))
     );
 
+    const persistence = await persistProductHunterRun({
+      products: intelligentProducts,
+      recommendations,
+      sources,
+      recommendationThreshold: RECOMMENDATION_THRESHOLD,
+      searchQuery: "pet",
+    });
+
     return NextResponse.json({
       success: true,
-      totalProducts: products.length,
+      jobId: persistence.jobId,
+      scanId: persistence.scanId,
+      totalProducts: intelligentProducts.length,
       recommendedProducts: recommendations.length,
       sources,
       products: recommendations,
       generatedAt: new Date().toISOString(),
     });
-  } catch {
+  } catch (error) {
+    console.error("AI Product Hunter failed:", error);
+
     return NextResponse.json(
       {
         success: false,
