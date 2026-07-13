@@ -203,6 +203,7 @@ export async function getLatestSavedRecommendations(): Promise<{
     return [
       {
         ...productRow.raw_data,
+        databaseId: productRow.id,
         aiScore: intelligence?.overall_score ?? productRow.raw_data.aiScore,
         intelligence:
           intelligence?.analysis ?? productRow.raw_data.intelligence,

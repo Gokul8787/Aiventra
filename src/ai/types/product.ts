@@ -2,6 +2,7 @@ import { ProductIntelligence } from "@/ai/intelligence/productIntelligenceTypes"
 
 export interface Product {
   id: string;
+  databaseId?: string;
   name: string;
   category: string;
   supplier: string;

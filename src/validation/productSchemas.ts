@@ -3,6 +3,7 @@ import type { Product } from "@/ai/types/product";
 
 export const ProductSchema = z.object({
   id: z.string().min(1),
+  databaseId: z.string().uuid().optional(),
   name: z.string().min(1).max(500),
   category: z.string().min(1).max(200),
   supplier: z.string().min(1).max(200),

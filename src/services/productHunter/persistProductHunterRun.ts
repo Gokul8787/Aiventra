@@ -17,7 +17,10 @@ import {
 
 import { saveProviderRuns } from "@/services/repositories/providerRunRepository";
 
-import { upsertProducts } from "@/services/repositories/productsRepository";
+import {
+  getProductPersistenceKey,
+  upsertProducts,
+} from "@/services/repositories/productsRepository";
 
 import { saveProductIntelligence } from "@/services/repositories/intelligenceRepository";
 
@@ -34,6 +37,7 @@ export type PersistProductHunterRunInput = {
 export type PersistProductHunterRunResult = {
   jobId: string;
   scanId: string;
+  productDatabaseIds: Record<string, string>;
 };
 
 export async function persistProductHunterRun(
@@ -86,9 +90,22 @@ export async function persistProductHunterRun(
       totalRecommended: input.recommendations.length,
     });
 
+    const productDatabaseIds = Object.fromEntries(
+      input.products.flatMap((product) => {
+        const persistedProduct = persistedProducts.get(
+          getProductPersistenceKey(product)
+        );
+
+        return persistedProduct
+          ? [[getProductPersistenceKey(product), persistedProduct.id]]
+          : [];
+      })
+    );
+
     return {
       jobId,
       scanId,
+      productDatabaseIds,
     };
   } catch (error) {
     const message =

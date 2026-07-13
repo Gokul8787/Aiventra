@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Product } from "@/ai/types/product";
 
@@ -486,10 +487,26 @@ export default function Home() {
                     >
                       {selectedProduct?.id === product.id && publishingPackage
                         ? "Publish Draft"
-                        : "Prepare"}
+                      : "Prepare"}
                     </button>
                   )}
                 </div>
+
+                {product.databaseId ? (
+                  <Link
+                    href={`/products/${product.databaseId}`}
+                    className="mt-3 block w-full rounded-xl bg-slate-800 px-4 py-2 text-center text-sm font-semibold hover:bg-slate-700"
+                  >
+                    Open Workspace
+                  </Link>
+                ) : (
+                  <button
+                    disabled
+                    className="mt-3 w-full rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold opacity-50"
+                  >
+                    Workspace unavailable
+                  </button>
+                )}
               </div>
               );
             })}

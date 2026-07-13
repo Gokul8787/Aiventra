@@ -8,6 +8,7 @@ import {
 import { generateProductInsight } from "@/ai/agents/productInsightAgent";
 import { analyzeProductIntelligence } from "@/ai/intelligence/productIntelligenceEngine";
 import { persistProductHunterRun } from "@/services/productHunter/persistProductHunterRun";
+import { getProductPersistenceKey } from "@/services/repositories/productsRepository";
 
 export async function GET() {
   try {
@@ -38,6 +39,12 @@ export async function GET() {
       searchQuery: "pet",
     });
 
+    const persistedRecommendations = recommendations.map((product) => ({
+      ...product,
+      databaseId:
+        persistence.productDatabaseIds[getProductPersistenceKey(product)],
+    }));
+
     return NextResponse.json({
       success: true,
       jobId: persistence.jobId,
@@ -45,7 +52,7 @@ export async function GET() {
       totalProducts: intelligentProducts.length,
       recommendedProducts: recommendations.length,
       sources,
-      products: recommendations,
+      products: persistedRecommendations,
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
