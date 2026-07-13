@@ -24,6 +24,12 @@ type PublishingPackage = {
   validationErrors: string[];
 };
 
+type ProductPublishStatus = {
+  success: boolean;
+  message: string;
+  externalUrl?: string;
+};
+
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [sources, setSources] = useState<SourceStatus[]>([]);
@@ -33,11 +39,11 @@ export default function Home() {
     useState<PublishingPackage | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [publishLoading, setPublishLoading] = useState(false);
-  const [publishResult, setPublishResult] = useState<{
-    success: boolean;
-    message: string;
-    externalUrl?: string;
-  } | null>(null);
+  const [publishResult, setPublishResult] =
+    useState<ProductPublishStatus | null>(null);
+  const [productPublishStatuses, setProductPublishStatuses] = useState<
+    Record<string, ProductPublishStatus>
+  >({});
 
   async function runAI() {
     setLoading(true);
@@ -110,6 +116,8 @@ export default function Home() {
 
     if (!confirmed) return;
 
+    const productToPublish = selectedProduct;
+
     try {
       setPublishLoading(true);
       setPublishResult(null);
@@ -131,20 +139,34 @@ export default function Home() {
         throw new Error(data.message || "Shopify draft publishing failed.");
       }
 
-      setPublishResult({
+      const successfulResult: ProductPublishStatus = {
         success: true,
         message:
           data.result?.message || "The product was created as a Shopify draft.",
         externalUrl: data.result?.externalUrl,
-      });
+      };
+
+      setPublishResult(successfulResult);
+
+      setProductPublishStatuses((current) => ({
+        ...current,
+        [productToPublish.id]: successfulResult,
+      }));
     } catch (error) {
-      setPublishResult({
+      const failedResult: ProductPublishStatus = {
         success: false,
         message:
           error instanceof Error
             ? error.message
             : "Shopify draft publishing failed.",
-      });
+      };
+
+      setPublishResult(failedResult);
+
+      setProductPublishStatuses((current) => ({
+        ...current,
+        [productToPublish.id]: failedResult,
+      }));
     } finally {
       setPublishLoading(false);
     }
@@ -234,11 +256,14 @@ export default function Home() {
           <h2 className="text-2xl font-bold">🏆 AI Recommended Products</h2>
 
           <div className="mt-6 grid gap-6 md:grid-cols-3">
-            {products.slice(0, 6).map((product) => (
-              <div
-                key={product.id}
-                className="rounded-2xl bg-slate-900 p-5 shadow-lg"
-              >
+            {products.slice(0, 6).map((product) => {
+              const productPublishStatus = productPublishStatuses[product.id];
+
+              return (
+                <div
+                  key={product.id}
+                  className="rounded-2xl bg-slate-900 p-5 shadow-lg"
+                >
                 {product.imageUrl ? (
                   <img
                     src={product.imageUrl}
@@ -291,6 +316,35 @@ export default function Home() {
 
                 <p className="mt-4 text-sm text-slate-300">{product.reason}</p>
 
+                {productPublishStatus && (
+                  <div
+                    className={`mt-4 rounded-xl border p-3 text-sm ${
+                      productPublishStatus.success
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                        : "border-red-500/30 bg-red-500/10 text-red-300"
+                    }`}
+                  >
+                    <p className="font-semibold">
+                      {productPublishStatus.success
+                        ? "✅ Shopify draft ready"
+                        : "❌ Publishing failed"}
+                    </p>
+
+                    <p className="mt-1">{productPublishStatus.message}</p>
+
+                    {productPublishStatus.externalUrl && (
+                      <a
+                        href={productPublishStatus.externalUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-block font-semibold text-cyan-400"
+                      >
+                        Open in Shopify →
+                      </a>
+                    )}
+                  </div>
+                )}
+
                 <div className="mt-5 flex gap-3">
                   <button
                     onClick={() => generatePublishing(product)}
@@ -300,24 +354,39 @@ export default function Home() {
                     Generate Listing
                   </button>
 
-                  <button
-                    onClick={() => {
-                      if (selectedProduct?.id === product.id && publishingPackage) {
-                        publishSelectedProduct();
-                      } else {
-                        generatePublishing(product);
-                      }
-                    }}
-                    disabled={publishingLoading || publishLoading}
-                    className="flex-1 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50"
-                  >
-                    {selectedProduct?.id === product.id && publishingPackage
-                      ? "Publish Draft"
-                      : "Prepare"}
-                  </button>
+                  {productPublishStatus?.success ? (
+                    <a
+                      href={productPublishStatus.externalUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-1 rounded-xl bg-slate-700 px-4 py-2 text-center text-sm font-semibold hover:bg-slate-600"
+                    >
+                      Open Draft
+                    </a>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (
+                          selectedProduct?.id === product.id &&
+                          publishingPackage
+                        ) {
+                          publishSelectedProduct();
+                        } else {
+                          generatePublishing(product);
+                        }
+                      }}
+                      disabled={publishingLoading || publishLoading}
+                      className="flex-1 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50"
+                    >
+                      {selectedProduct?.id === product.id && publishingPackage
+                        ? "Publish Draft"
+                        : "Prepare"}
+                    </button>
+                  )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 

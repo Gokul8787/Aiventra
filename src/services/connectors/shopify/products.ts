@@ -6,6 +6,15 @@ type ShopifyUserError = {
   message: string;
 };
 
+type ProductByHandleData = {
+  productByHandle: {
+    id: string;
+    title: string;
+    handle: string;
+    status: string;
+  } | null;
+};
+
 type ProductCreateData = {
   productCreate: {
     product: {
@@ -35,6 +44,17 @@ type VariantUpdateData = {
     userErrors: ShopifyUserError[];
   };
 };
+
+const PRODUCT_BY_HANDLE_QUERY = `
+  query AiventraProductByHandle($handle: String!) {
+    productByHandle(handle: $handle) {
+      id
+      title
+      handle
+      status
+    }
+  }
+`;
 
 const CREATE_PRODUCT_MUTATION = `
   mutation AiventraCreateDraftProduct(
@@ -99,9 +119,34 @@ function getNumericShopifyId(graphqlId: string): string {
   return graphqlId.split("/").pop() || graphqlId;
 }
 
+async function findExistingProduct(handle: string) {
+  const data = await shopifyGraphQL<ProductByHandleData>(
+    PRODUCT_BY_HANDLE_QUERY,
+    { handle }
+  );
+
+  return data.productByHandle;
+}
+
 export async function publishToShopify(
   product: PublishProductInput
 ): Promise<PublishResult> {
+  const existingProduct = await findExistingProduct(product.handle);
+
+  if (existingProduct) {
+    const numericId = getNumericShopifyId(existingProduct.id);
+    const configuredDomain = process.env.SHOPIFY_STORE_DOMAIN?.trim();
+
+    return {
+      success: true,
+      externalId: existingProduct.id,
+      externalUrl: configuredDomain
+        ? `https://${configuredDomain}/admin/products/${numericId}`
+        : undefined,
+      message: `"${existingProduct.title}" already exists in Shopify as ${existingProduct.status.toLowerCase()}.`,
+    };
+  }
+
   const media = product.imageUrl
     ? [
         {
