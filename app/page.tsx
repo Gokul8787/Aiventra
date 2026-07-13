@@ -5,8 +5,19 @@ import { Product } from "@/ai/types/product";
 
 type SourceStatus = {
   name: string;
-  status: "success" | "failed";
+  status: "success" | "failed" | "skipped";
   count: number;
+  error?: string;
+};
+
+type RecentScan = {
+  id: string;
+  status: "running" | "completed" | "failed";
+  totalFound: number;
+  totalRecommended: number;
+  startedAt: string;
+  completedAt?: string;
+  providers: SourceStatus[];
 };
 
 type PublishingPackage = {
@@ -47,6 +58,8 @@ export default function Home() {
   const [productPublishStatuses, setProductPublishStatuses] = useState<
     Record<string, ProductPublishStatus>
   >({});
+  const [recentScans, setRecentScans] = useState<RecentScan[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
 
   const runAI = useCallback(async () => {
     try {
@@ -67,6 +80,16 @@ export default function Home() {
       setSources(data.sources || []);
       setTotalProducts(data.totalProducts ?? 0);
       setRecommendedProducts(data.recommendedProducts ?? 0);
+
+      const scansResponse = await fetch("/api/history/product-scans", {
+        cache: "no-store",
+      });
+
+      const scansData = await scansResponse.json();
+
+      if (scansResponse.ok && scansData.success) {
+        setRecentScans(scansData.scans || []);
+      }
     } catch (error) {
       setProducts([]);
       setSources([]);
@@ -78,6 +101,39 @@ export default function Home() {
       );
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const loadSavedDashboard = useCallback(async () => {
+    try {
+      setHistoryLoading(true);
+
+      const [latestResponse, scansResponse] = await Promise.all([
+        fetch("/api/history/latest-recommendations", {
+          cache: "no-store",
+        }),
+        fetch("/api/history/product-scans", {
+          cache: "no-store",
+        }),
+      ]);
+
+      const latestData = await latestResponse.json();
+      const scansData = await scansResponse.json();
+
+      if (latestResponse.ok && latestData.success) {
+        setProducts(latestData.products || []);
+        setSources(latestData.sources || []);
+        setTotalProducts(latestData.totalProducts ?? 0);
+        setRecommendedProducts(latestData.recommendedProducts ?? 0);
+      }
+
+      if (scansResponse.ok && scansData.success) {
+        setRecentScans(scansData.scans || []);
+      }
+    } catch (error) {
+      console.error("Failed to load saved dashboard:", error);
+    } finally {
+      setHistoryLoading(false);
     }
   }, []);
 
@@ -199,11 +255,11 @@ export default function Home() {
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      void runAI();
+      void loadSavedDashboard();
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [runAI]);
+  }, [loadSavedDashboard]);
 
   const bestProduct = products[0];
 
@@ -437,6 +493,77 @@ export default function Home() {
               </div>
               );
             })}
+          </div>
+        </section>
+
+        <section className="mt-10 rounded-2xl bg-slate-900 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">Recent AI Scans</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Product Hunter history saved in Supabase.
+              </p>
+            </div>
+
+            {historyLoading && (
+              <span className="text-sm text-slate-400">
+                Loading history...
+              </span>
+            )}
+          </div>
+
+          <div className="mt-6 space-y-4">
+            {recentScans.length === 0 && !historyLoading ? (
+              <div className="rounded-xl bg-slate-800 p-5 text-slate-400">
+                No saved scans yet.
+              </div>
+            ) : (
+              recentScans.map((scan) => (
+                <div key={scan.id} className="rounded-xl bg-slate-800 p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="font-semibold">
+                        {new Date(scan.startedAt).toLocaleString("en-GB")}
+                      </p>
+
+                      <p className="mt-1 text-sm text-slate-400">
+                        {scan.totalFound} products scanned ·{" "}
+                        {scan.totalRecommended} recommended
+                      </p>
+                    </div>
+
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        scan.status === "completed"
+                          ? "bg-emerald-500/15 text-emerald-300"
+                          : scan.status === "failed"
+                            ? "bg-red-500/15 text-red-300"
+                            : "bg-amber-500/15 text-amber-300"
+                      }`}
+                    >
+                      {scan.status}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {scan.providers.map((provider) => (
+                      <span
+                        key={`${scan.id}-${provider.name}`}
+                        className={`rounded-full px-3 py-1 text-xs ${
+                          provider.status === "success"
+                            ? "bg-emerald-500/10 text-emerald-300"
+                            : "bg-red-500/10 text-red-300"
+                        }`}
+                      >
+                        {provider.name}{" "}
+                        {provider.status === "success" ? "✓" : "✕"} (
+                        {provider.count})
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </section>
 
