@@ -1,18 +1,24 @@
 import { NextResponse } from "next/server";
-import { Product } from "@/ai/types/product";
+import { ProductSchema } from "@/validation/productSchemas";
 import { generatePublishingPackage } from "@/ai/publishing/publishingEngine";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const product = body.product as Product;
+    const parsed = ProductSchema.safeParse(body.product);
 
-    if (!product) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, message: "Product is required" },
+        {
+          success: false,
+          message: "Invalid product data.",
+          errors: parsed.error.flatten(),
+        },
         { status: 400 }
       );
     }
+
+    const product = parsed.data;
 
     const publishingPackage = await generatePublishingPackage({
       product,
@@ -33,7 +39,7 @@ export async function POST(request: Request) {
         message:
           error instanceof Error
             ? error.message
-            : "Publishing package generation failed",
+            : "Publishing package generation failed.",
       },
       { status: 500 }
     );

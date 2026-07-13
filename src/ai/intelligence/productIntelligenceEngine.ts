@@ -60,6 +60,26 @@ export function analyzeProductIntelligence(product: Product) {
     dataFreshnessScore: 85,
   });
 
+  const dataQuality = {
+    status: "mixed" as const,
+    estimatedFields: [
+      "shippingCost",
+      "advertisingCost",
+      "returnAllowance",
+      "supplierRating",
+      "fulfilmentRate",
+      "supplierOrderHistory",
+      "averageRating",
+      "reviewCount",
+      "reviewSentiment",
+      "searchVolume",
+      "socialMentions",
+      "sellerCount",
+      "priceSaturation",
+      "providerAgreement",
+    ],
+  };
+
   const overallScore = calculateOverallScore({
     demand: demand.demandScore,
     competition: competition.competitionOpportunityScore,
@@ -81,5 +101,6 @@ export function analyzeProductIntelligence(product: Product) {
     seasonality,
     confidence,
     overallScore,
+    dataQuality,
   };
 }

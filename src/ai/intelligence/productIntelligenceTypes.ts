@@ -9,6 +9,11 @@ import {
   ConfidenceAnalysis,
 } from "./types";
 
+export interface IntelligenceDataQuality {
+  status: "estimated" | "verified" | "mixed";
+  estimatedFields: string[];
+}
+
 export interface ProductIntelligence {
   demand: DemandAnalysis;
   competition: CompetitionAnalysis;
@@ -19,4 +24,5 @@ export interface ProductIntelligence {
   seasonality: SeasonalityAnalysis;
   confidence: ConfidenceAnalysis;
   overallScore: number;
+  dataQuality: IntelligenceDataQuality;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Product } from "@/ai/types/product";
 
 type SourceStatus = {
@@ -34,6 +34,9 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [sources, setSources] = useState<SourceStatus[]>([]);
   const [loading, setLoading] = useState(false);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [recommendedProducts, setRecommendedProducts] = useState(0);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [publishingLoading, setPublishingLoading] = useState(false);
   const [publishingPackage, setPublishingPackage] =
     useState<PublishingPackage | null>(null);
@@ -45,16 +48,38 @@ export default function Home() {
     Record<string, ProductPublishStatus>
   >({});
 
-  async function runAI() {
-    setLoading(true);
+  const runAI = useCallback(async () => {
+    try {
+      setLoading(true);
+      setScanError(null);
 
-    const response = await fetch("/api/ai/product-hunter");
-    const data = await response.json();
+      const response = await fetch("/api/ai/product-hunter", {
+        cache: "no-store",
+      });
 
-    setProducts(data.products || []);
-    setSources(data.sources || []);
-    setLoading(false);
-  }
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Product Hunter failed.");
+      }
+
+      setProducts(data.products || []);
+      setSources(data.sources || []);
+      setTotalProducts(data.totalProducts ?? 0);
+      setRecommendedProducts(data.recommendedProducts ?? 0);
+    } catch (error) {
+      setProducts([]);
+      setSources([]);
+      setTotalProducts(0);
+      setRecommendedProducts(0);
+
+      setScanError(
+        error instanceof Error ? error.message : "Product Hunter failed."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   async function generatePublishing(product: Product) {
     try {
@@ -173,8 +198,12 @@ export default function Home() {
   }
 
   useEffect(() => {
-    runAI();
-  }, []);
+    const timeoutId = window.setTimeout(() => {
+      void runAI();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [runAI]);
 
   const bestProduct = products[0];
 
@@ -187,11 +216,11 @@ export default function Home() {
         </p>
 
         <div className="mt-10 grid gap-6 md:grid-cols-3">
-          <Card title="Products Scanned" value={String(products.length)} />
-          <Card title="Winning Products" value={String(products.length)} />
-          <Card title="Today's Revenue" value="£0" />
-          <Card title="Estimated Profit" value="£65+" />
-          <Card title="Active Stores" value="1" />
+          <Card title="Products Scanned" value={String(totalProducts)} />
+          <Card title="Winning Products" value={String(recommendedProducts)} />
+          <Card title="Today's Revenue" value="Not connected" />
+          <Card title="Estimated Profit" value="Estimated per product" />
+          <Card title="Shopify Store" value="Connected" />
           <Card
             title="AI Confidence"
             value={bestProduct ? `${bestProduct.aiScore}%` : "0%"}
@@ -234,6 +263,15 @@ export default function Home() {
           <Button text="⚙ Settings" />
         </div>
 
+        {scanError && (
+          <section className="mt-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-5">
+            <p className="font-semibold text-red-300">
+              Product Hunter failed
+            </p>
+            <p className="mt-2 text-slate-200">{scanError}</p>
+          </section>
+        )}
+
         <section className="mt-10 rounded-2xl bg-slate-900 p-6">
           <h2 className="text-2xl font-bold">Market Intelligence Sources</h2>
 
@@ -254,6 +292,12 @@ export default function Home() {
 
         <section className="mt-10">
           <h2 className="text-2xl font-bold">🏆 AI Recommended Products</h2>
+
+          <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+            CJ product details are live. Several demand, review, competition and
+            supplier metrics are currently estimated until additional real data
+            providers are connected.
+          </div>
 
           <div className="mt-6 grid gap-6 md:grid-cols-3">
             {products.slice(0, 6).map((product) => {
@@ -286,6 +330,12 @@ export default function Home() {
                     {product.aiScore}/100
                   </span>
                 </div>
+
+                {product.intelligence?.dataQuality?.status !== "verified" && (
+                  <span className="mt-2 inline-block rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-300">
+                    Estimated intelligence
+                  </span>
+                )}
 
                 <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                   <MiniStat

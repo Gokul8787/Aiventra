@@ -25,8 +25,15 @@ export function analyzeProfit(input: ProfitInput): ProfitAnalysis {
 
   const roi = totalCost > 0 ? (netProfit / totalCost) * 100 : 0;
 
+  const preAdvertisingProfit =
+    input.sellPrice -
+    input.supplierCost -
+    input.shippingCost -
+    platformFee -
+    returnAllowance;
+
   const breakEvenROAS =
-    input.estimatedAdCost > 0 ? input.sellPrice / input.estimatedAdCost : 0;
+    preAdvertisingProfit > 0 ? input.sellPrice / preAdvertisingProfit : 0;
 
   const recommendedSellPrice = round(
     (input.supplierCost + input.shippingCost + input.estimatedAdCost) * 2.5

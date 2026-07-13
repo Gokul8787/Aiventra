@@ -9,4 +9,4 @@ export const openai = new OpenAI({
 });
 
 export const OPENAI_MODEL =
-  process.env.OPENAI_CARE_PLAN_MODEL || "gpt-4o-mini";
+  process.env.OPENAI_PRODUCT_MODEL || "gpt-4o-mini";
