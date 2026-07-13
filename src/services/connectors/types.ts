@@ -7,6 +7,11 @@ export interface PublishProductInput {
   collections: string[];
   handle: string;
   imageUrl?: string;
+  imageAltText?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  productType?: string;
+  vendor?: string;
 }
 
 export interface PublishResult {
