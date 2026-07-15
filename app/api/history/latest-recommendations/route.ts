@@ -1,24 +1,18 @@
 import { NextResponse } from "next/server";
+import { createApiErrorResponse } from "@/auth/apiErrorResponse";
+import { requireApiContext } from "@/auth/requireApiContext";
 import { getLatestSavedRecommendations } from "@/services/repositories/scanHistoryRepository";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const result = await getLatestSavedRecommendations();
+    const context = await requireApiContext(request, "dashboard.read");
+    const result = await getLatestSavedRecommendations(context.tenantContext);
 
     return NextResponse.json({
       success: true,
       ...result,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        success: false,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to load saved recommendations.",
-      },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error);
   }
 }

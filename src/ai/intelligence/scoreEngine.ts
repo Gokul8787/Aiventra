@@ -1,6 +1,6 @@
 import { IntelligenceScores } from "./intelligenceTypes";
 
-const SCORE_WEIGHTS: IntelligenceScores = {
+export const SCORE_WEIGHTS: IntelligenceScores = {
   demand: 0.2,
   competition: 0.15,
   profit: 0.2,

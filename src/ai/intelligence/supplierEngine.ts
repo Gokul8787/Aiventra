@@ -1,20 +1,37 @@
-import { SupplierAnalysis, SupplierInput } from "./types";
+import type { Product } from "@/ai/types/product";
+import type { IntelligenceEngine } from "./core/IntelligenceEngine";
+import { SCORE_WEIGHTS } from "./scoreEngine";
+import { SupplierAnalysis } from "./types";
 
-export function analyzeSupplier(input: SupplierInput): SupplierAnalysis {
-  const ratingScore = (input.supplierRating / 5) * 40;
-  const fulfilmentScore = input.fulfilmentRate * 0.4;
-  const historyScore = Math.min(input.orderHistory / 1000, 1) * 20;
+export class SupplierEngine implements IntelligenceEngine<SupplierAnalysis> {
+  readonly id = "supplier";
+  readonly name = "Supplier";
+  readonly version = "2.0.0";
+  readonly weight = SCORE_WEIGHTS.supplier;
+  readonly enabled = true;
+  readonly required = true;
 
-  const supplierScore = Math.round(
-    Math.max(0, Math.min(100, ratingScore + fulfilmentScore + historyScore))
-  );
+  execute(product: Product): SupplierAnalysis {
+    const reliability = product.supplierReliability;
 
-  const supplierRisk =
-    supplierScore >= 75 ? "low" : supplierScore >= 45 ? "medium" : "high";
+    if (!reliability) {
+      return {
+        supplierScore: 0,
+        supplierRisk: "high",
+        reason: "Supplier reliability analysis is unavailable.",
+      };
+    }
 
-  return {
-    supplierScore,
-    supplierRisk,
-    reason: `Supplier rating ${input.supplierRating}/5, fulfilment rate ${input.fulfilmentRate}%, order history ${input.orderHistory}.`,
-  };
+    return {
+      supplierScore: reliability.supplierScore,
+      supplierRisk: reliability.supplierRisk,
+      reason:
+        reliability.reasons.join(" ") ||
+        `Supplier reliability is ${reliability.dataQuality} with ${reliability.sampleSize} samples.`,
+    };
+  }
+
+  getScore(result: SupplierAnalysis): number {
+    return result.supplierScore;
+  }
 }

@@ -1,3 +1,6 @@
+import type { Product } from "@/ai/types/product";
+import type { IntelligenceEngine } from "./core/IntelligenceEngine";
+import { SCORE_WEIGHTS } from "./scoreEngine";
 import { CompetitionAnalysis, CompetitionInput } from "./types";
 
 export function analyzeCompetition(
@@ -22,4 +25,27 @@ export function analyzeCompetition(
     competitionRisk,
     reason: `Competition score ${input.competitionScore}, seller count score ${input.sellerCountScore}, price saturation score ${input.priceSaturationScore}.`,
   };
+}
+
+export class CompetitionEngine
+  implements IntelligenceEngine<CompetitionAnalysis>
+{
+  readonly id = "competition";
+  readonly name = "Competition";
+  readonly version = "1.0.0";
+  readonly weight = SCORE_WEIGHTS.competition;
+  readonly enabled = true;
+  readonly required = true;
+
+  execute(product: Product): CompetitionAnalysis {
+    return analyzeCompetition({
+      competitionScore: product.competitionScore,
+      sellerCountScore: 60,
+      priceSaturationScore: 55,
+    });
+  }
+
+  getScore(result: CompetitionAnalysis): number {
+    return result.competitionOpportunityScore;
+  }
 }

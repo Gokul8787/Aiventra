@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { createApiErrorResponse } from "@/auth/apiErrorResponse";
+import { requireApiContext } from "@/auth/requireApiContext";
 import { getProductWorkspace } from "@/services/products/getProductWorkspace";
 
 type RouteContext = {
@@ -7,11 +9,12 @@ type RouteContext = {
   }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
+    const apiContext = await requireApiContext(request, "products.read");
 
-    const workspace = await getProductWorkspace(id);
+    const workspace = await getProductWorkspace(apiContext.tenantContext, id);
 
     if (!workspace) {
       return NextResponse.json(
@@ -28,15 +31,6 @@ export async function GET(_request: Request, context: RouteContext) {
       workspace,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        success: false,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to load product workspace.",
-      },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error);
   }
 }

@@ -1,60 +1,32 @@
-import { ProfitAnalysis, ProfitInput } from "./types";
+import { calculateProductCost } from "@/ai/cost/calculateProductCost";
+import type { Product } from "@/ai/types/product";
+import type { IntelligenceEngine } from "./core/IntelligenceEngine";
+import { SCORE_WEIGHTS } from "./scoreEngine";
+import { ProfitAnalysis } from "./types";
 
-function round(value: number) {
-  return Math.round(value * 100) / 100;
-}
+export class ProfitEngine implements IntelligenceEngine<ProfitAnalysis> {
+  readonly id = "profit";
+  readonly name = "Profit";
+  readonly version = "2.0.0";
+  readonly weight = SCORE_WEIGHTS.profit;
+  readonly enabled = true;
+  readonly required = true;
 
-export function analyzeProfit(input: ProfitInput): ProfitAnalysis {
-  const platformFee = input.sellPrice * (input.platformFeePercent / 100);
-  const returnAllowance = input.sellPrice * (input.returnAllowancePercent / 100);
+  execute(product: Product): ProfitAnalysis {
+    const costAnalysis = product.costAnalysis ?? calculateProductCost(product);
 
-  const grossProfit =
-    input.sellPrice - input.supplierCost - input.shippingCost;
+    return {
+      grossProfit: costAnalysis.grossProfit,
+      netProfit: costAnalysis.netProfit,
+      margin: costAnalysis.netMarginPercent,
+      roi: costAnalysis.roiPercent,
+      breakEvenROAS: costAnalysis.breakEvenROAS,
+      recommendedSellPrice: product.sellPrice,
+      profitScore: costAnalysis.profitScore,
+    };
+  }
 
-  const netProfit =
-    grossProfit - platformFee - input.estimatedAdCost - returnAllowance;
-
-  const margin = input.sellPrice > 0 ? (netProfit / input.sellPrice) * 100 : 0;
-
-  const totalCost =
-    input.supplierCost +
-    input.shippingCost +
-    platformFee +
-    input.estimatedAdCost +
-    returnAllowance;
-
-  const roi = totalCost > 0 ? (netProfit / totalCost) * 100 : 0;
-
-  const preAdvertisingProfit =
-    input.sellPrice -
-    input.supplierCost -
-    input.shippingCost -
-    platformFee -
-    returnAllowance;
-
-  const breakEvenROAS =
-    preAdvertisingProfit > 0 ? input.sellPrice / preAdvertisingProfit : 0;
-
-  const recommendedSellPrice = round(
-    (input.supplierCost + input.shippingCost + input.estimatedAdCost) * 2.5
-  );
-
-  let profitScore = 0;
-
-  if (margin >= 50) profitScore = 95;
-  else if (margin >= 40) profitScore = 85;
-  else if (margin >= 30) profitScore = 70;
-  else if (margin >= 20) profitScore = 55;
-  else if (margin >= 10) profitScore = 35;
-  else profitScore = 15;
-
-  return {
-    grossProfit: round(grossProfit),
-    netProfit: round(netProfit),
-    margin: round(margin),
-    roi: round(roi),
-    breakEvenROAS: round(breakEvenROAS),
-    recommendedSellPrice,
-    profitScore,
-  };
+  getScore(result: ProfitAnalysis): number {
+    return result.profitScore;
+  }
 }

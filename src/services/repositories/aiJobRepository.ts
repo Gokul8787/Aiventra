@@ -1,5 +1,7 @@
 import "server-only";
 import { supabaseAdmin } from "@/services/supabase/admin";
+import type { TenantContext } from "@/context/storeContext";
+import { tenantColumns, tenantPayload } from "@/context/storeContext";
 
 export type AIJobType =
   | "product_scan"
@@ -14,16 +16,21 @@ type AIJobRow = {
 };
 
 export async function createAIJob(
+  tenantContext: TenantContext,
   jobType: AIJobType,
   input: Record<string, unknown> = {}
 ): Promise<string> {
   const { data, error } = await supabaseAdmin
     .from("ai_jobs")
     .insert({
+      ...tenantColumns(tenantContext),
       job_type: jobType,
       status: "running",
       progress: 0,
-      input,
+      input: {
+        ...input,
+        tenantContext: tenantPayload(tenantContext),
+      },
       started_at: new Date().toISOString(),
     })
     .select("id")

@@ -3,6 +3,15 @@ import "server-only";
 import { supabaseAdmin } from "@/services/supabase/admin";
 import { Product } from "@/ai/types/product";
 import { ProductIntelligence } from "@/ai/intelligence/productIntelligenceTypes";
+import type { TenantContext } from "@/context/storeContext";
+import {
+  mapProductDecisionRow,
+  ProductDecisionRow,
+} from "./decisionRepository";
+import {
+  getHistory as getLifecycleHistory,
+} from "@/lifecycle/LifecycleRepository";
+import type { LifecycleTransition } from "@/lifecycle/ProductLifecycleTransition";
 
 export type WorkspaceProduct = Product & {
   databaseId: string;
@@ -63,19 +72,27 @@ export type RelatedProduct = {
   aiScore?: number;
 };
 
+export type ProductLifecycleHistoryItem = LifecycleTransition;
+
 type ProductDatabaseRow = {
   id: string;
+  organisation_id: string | null;
+  store_id: string | null;
   raw_data: Product;
   name: string;
   category: string | null;
   supplier: string | null;
   provider: string;
   image_url: string | null;
+  current_lifecycle: Product["currentLifecycle"] | null;
+  lifecycle_status: Product["lifecycleStatus"] | null;
+  lifecycle_changed_at: string | null;
   first_seen_at: string;
   last_seen_at: string;
 };
 
 export async function getProductById(
+  tenantContext: TenantContext,
   productId: string
 ): Promise<WorkspaceProduct | null> {
   const { data, error } = await supabaseAdmin
@@ -83,16 +100,23 @@ export async function getProductById(
     .select(
       `
         id,
+        organisation_id,
+        store_id,
         raw_data,
         name,
         category,
         supplier,
         provider,
         image_url,
+        current_lifecycle,
+        lifecycle_status,
+        lifecycle_changed_at,
         first_seen_at,
         last_seen_at
       `
     )
+    .eq("organisation_id", tenantContext.organisationId)
+    .eq("store_id", tenantContext.storeId)
     .eq("id", productId)
     .maybeSingle<ProductDatabaseRow>();
 
@@ -105,22 +129,45 @@ export async function getProductById(
   return {
     ...data.raw_data,
     databaseId: data.id,
+    organisationId:
+      data.raw_data.organisationId ||
+      data.organisation_id ||
+      tenantContext.organisationId,
+    storeId: data.raw_data.storeId || data.store_id || tenantContext.storeId,
     name: data.raw_data.name || data.name,
     category: data.raw_data.category || data.category || "General",
     supplier: data.raw_data.supplier || data.supplier || data.provider,
     imageUrl: data.raw_data.imageUrl || data.image_url || undefined,
+    currentLifecycle:
+      data.raw_data.currentLifecycle || data.current_lifecycle || undefined,
+    lifecycleStatus:
+      data.raw_data.lifecycleStatus || data.lifecycle_status || undefined,
+    lifecycleChangedAt:
+      data.raw_data.lifecycleChangedAt ||
+      data.lifecycle_changed_at ||
+      undefined,
     firstSeenAt: data.first_seen_at,
     lastSeenAt: data.last_seen_at,
   };
 }
 
+export async function getProductLifecycleHistory(
+  tenantContext: TenantContext,
+  productId: string
+) {
+  return getLifecycleHistory(tenantContext, productId);
+}
+
 export async function getProductIntelligenceHistory(
+  tenantContext: TenantContext,
   productId: string,
   limit = 20
 ): Promise<IntelligenceHistoryItem[]> {
   const { data, error } = await supabaseAdmin
     .from("product_intelligence")
     .select("id, overall_score, analysis, calculated_at")
+    .eq("organisation_id", tenantContext.organisationId)
+    .eq("store_id", tenantContext.storeId)
     .eq("product_id", productId)
     .order("calculated_at", { ascending: false })
     .limit(limit);
@@ -137,12 +184,52 @@ export async function getProductIntelligenceHistory(
   }));
 }
 
+export async function getLatestProductDecision(
+  tenantContext: TenantContext,
+  productId: string
+) {
+  const { data, error } = await supabaseAdmin
+    .from("product_decisions")
+    .select(
+      `
+        product_id,
+        decision,
+        confidence,
+        risk,
+        automation_allowed,
+        requires_human_approval,
+        readiness,
+        readiness_blocking_reasons,
+        reasons,
+        blockers,
+        warnings,
+        engine_version,
+        evaluated_at
+      `
+    )
+    .eq("organisation_id", tenantContext.organisationId)
+    .eq("store_id", tenantContext.storeId)
+    .eq("product_id", productId)
+    .order("evaluated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<ProductDecisionRow>();
+
+  if (error) {
+    throw new Error(`Failed to load product decision: ${error.message}`);
+  }
+
+  return data ? mapProductDecisionRow(data) : null;
+}
+
 export async function getLatestPublishingPackage(
+  tenantContext: TenantContext,
   productId: string
 ): Promise<PublishingPackageRecord | null> {
   const { data, error } = await supabaseAdmin
     .from("publishing_packages")
     .select("*")
+    .eq("organisation_id", tenantContext.organisationId)
+    .eq("store_id", tenantContext.storeId)
     .eq("product_id", productId)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -174,11 +261,14 @@ export async function getLatestPublishingPackage(
 }
 
 export async function getLatestPublication(
+  tenantContext: TenantContext,
   productId: string
 ): Promise<PublicationRecord | null> {
   const { data, error } = await supabaseAdmin
     .from("product_publications")
     .select("*")
+    .eq("organisation_id", tenantContext.organisationId)
+    .eq("store_id", tenantContext.storeId)
     .eq("product_id", productId)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -203,6 +293,7 @@ export async function getLatestPublication(
 }
 
 export async function getProductHistory(
+  tenantContext: TenantContext,
   productId: string,
   product: WorkspaceProduct
 ): Promise<ProductHistorySummary> {
@@ -216,6 +307,8 @@ export async function getProductHistory(
         )
       `
     )
+    .eq("organisation_id", tenantContext.organisationId)
+    .eq("store_id", tenantContext.storeId)
     .eq("product_id", productId);
 
   if (error) {
@@ -239,6 +332,8 @@ export async function getProductHistory(
     await supabaseAdmin
       .from("product_intelligence")
       .select("overall_score")
+      .eq("organisation_id", tenantContext.organisationId)
+      .eq("store_id", tenantContext.storeId)
       .eq("product_id", productId)
       .order("calculated_at", { ascending: false })
       .limit(1)
@@ -264,12 +359,15 @@ export async function getProductHistory(
 }
 
 export async function getRelatedProducts(
+  tenantContext: TenantContext,
   product: WorkspaceProduct,
   limit = 5
 ): Promise<RelatedProduct[]> {
   let query = supabaseAdmin
     .from("products")
     .select("id, name, category, supplier, provider, image_url, raw_data")
+    .eq("organisation_id", tenantContext.organisationId)
+    .eq("store_id", tenantContext.storeId)
     .neq("id", product.databaseId)
     .limit(20);
 
@@ -295,6 +393,8 @@ export async function getRelatedProducts(
     await supabaseAdmin
       .from("product_intelligence")
       .select("product_id, overall_score, calculated_at")
+      .eq("organisation_id", tenantContext.organisationId)
+      .eq("store_id", tenantContext.storeId)
       .in("product_id", ids)
       .order("calculated_at", { ascending: false });
 

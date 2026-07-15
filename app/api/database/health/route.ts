@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { createApiErrorResponse } from "@/auth/apiErrorResponse";
+import { requireApiContext } from "@/auth/requireApiContext";
 import { testSupabaseConnection } from "@/services/supabase/health";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    await requireApiContext(request, "audit.read");
     const health = await testSupabaseConnection();
 
     return NextResponse.json({
@@ -11,15 +14,6 @@ export async function GET() {
       checkedAt: new Date().toISOString(),
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        success: false,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Supabase health check failed.",
-      },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error);
   }
 }

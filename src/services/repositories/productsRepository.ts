@@ -1,9 +1,13 @@
 import "server-only";
 import { supabaseAdmin } from "@/services/supabase/admin";
 import { Product } from "@/ai/types/product";
+import type { TenantContext } from "@/context/storeContext";
+import { requireTenantContext, tenantColumns } from "@/context/storeContext";
 
 export type PersistedProduct = {
   id: string;
+  organisation_id: string;
+  store_id: string;
   provider: string;
   external_product_id: string;
 };
@@ -27,8 +31,11 @@ export function getProductPersistenceKey(product: Product): string {
 }
 
 export async function upsertProducts(
+  tenantContext: TenantContext,
   products: Product[]
 ): Promise<Map<string, PersistedProduct>> {
+  const context = requireTenantContext(tenantContext);
+
   if (products.length === 0) {
     return new Map();
   }
@@ -36,6 +43,7 @@ export async function upsertProducts(
   const now = new Date().toISOString();
 
   const rows = products.map((product) => ({
+    ...tenantColumns(context),
     provider: normaliseProvider(product),
     external_product_id: getExternalProductId(product),
 
@@ -56,7 +64,12 @@ export async function upsertProducts(
     average_rating: product.averageRating ?? null,
     review_count: product.reviewCount ?? null,
 
-    raw_data: product,
+    raw_data: {
+      ...product,
+      organisationId: context.organisationId,
+      storeId: context.storeId,
+      currency: product.currency || context.currency,
+    },
     last_seen_at: now,
     updated_at: now,
   }));
@@ -64,9 +77,9 @@ export async function upsertProducts(
   const { data, error } = await supabaseAdmin
     .from("products")
     .upsert(rows, {
-      onConflict: "provider,external_product_id",
+      onConflict: "organisation_id,store_id,provider,external_product_id",
     })
-    .select("id, provider, external_product_id");
+    .select("id, organisation_id, store_id, provider, external_product_id");
 
   if (error) {
     throw new Error(`Failed to upsert products: ${error.message}`);

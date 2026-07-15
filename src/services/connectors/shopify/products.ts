@@ -1,4 +1,5 @@
 import { PublishProductInput, PublishResult } from "../types";
+import type { TenantContext } from "@/context/storeContext";
 import { shopifyGraphQL } from "./client";
 
 type ShopifyUserError = {
@@ -129,6 +130,7 @@ async function findExistingProduct(handle: string) {
 }
 
 export async function publishToShopify(
+  _tenantContext: TenantContext,
   product: PublishProductInput
 ): Promise<PublishResult> {
   const existingProduct = await findExistingProduct(product.handle);
@@ -231,6 +233,7 @@ export async function publishToShopify(
   return {
     success: true,
     externalId: createdProduct.id,
+    externalVariantId: initialVariant.id,
     externalUrl: configuredDomain
       ? `https://${configuredDomain}/admin/products/${numericId}`
       : undefined,

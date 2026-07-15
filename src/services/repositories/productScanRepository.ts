@@ -1,11 +1,14 @@
 import "server-only";
 import { supabaseAdmin } from "@/services/supabase/admin";
+import type { TenantContext } from "@/context/storeContext";
+import { tenantColumns } from "@/context/storeContext";
 
 type ProductScanRow = {
   id: string;
 };
 
 export async function createProductScan(input: {
+  tenantContext: TenantContext;
   jobId: string;
   searchQuery?: string;
   recommendationThreshold: number;
@@ -13,6 +16,7 @@ export async function createProductScan(input: {
   const { data, error } = await supabaseAdmin
     .from("product_scans")
     .insert({
+      ...tenantColumns(input.tenantContext),
       job_id: input.jobId,
       status: "running",
       search_query: input.searchQuery || null,

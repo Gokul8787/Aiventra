@@ -1,8 +1,11 @@
 import "server-only";
 import { supabaseAdmin } from "@/services/supabase/admin";
 import { SourceStatus } from "@/ai/agents/trendCollector";
+import type { TenantContext } from "@/context/storeContext";
+import { tenantColumns } from "@/context/storeContext";
 
 export async function saveProviderRuns(
+  tenantContext: TenantContext,
   scanId: string,
   sources: SourceStatus[]
 ): Promise<void> {
@@ -11,6 +14,7 @@ export async function saveProviderRuns(
   const now = new Date().toISOString();
 
   const rows = sources.map((source) => ({
+    ...tenantColumns(tenantContext),
     scan_id: scanId,
     provider_name: source.name,
     status: source.status === "success" ? "success" : "failed",

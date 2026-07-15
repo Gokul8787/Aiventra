@@ -1,106 +1,38 @@
-import { Product } from "@/ai/types/product";
-import { analyzeCompetition } from "./competitionEngine";
-import { analyzeConfidence } from "./confidenceEngine";
-import { analyzeDemand } from "./demandEngine";
-import { analyzeProfit } from "./profitEngine";
-import { analyzeReviews } from "./reviewEngine";
-import { analyzeSeasonality } from "./seasonalityEngine";
-import { analyzeShipping } from "./shippingEngine";
-import { analyzeSupplier } from "./supplierEngine";
-import { calculateOverallScore } from "./scoreEngine";
+import "./core/registerDefaultEngines";
 
-export function analyzeProductIntelligence(product: Product) {
-  const profit = analyzeProfit({
-    supplierCost: product.supplierPrice,
-    shippingCost: 3.99,
-    sellPrice: product.sellPrice,
-    platformFeePercent: 2.9,
-    estimatedAdCost: 6,
-    returnAllowancePercent: 3,
-  });
+import type { Product } from "@/ai/types/product";
+import type { ProductIntelligence } from "./productIntelligenceTypes";
+import { getRegisteredEngines } from "./core/IntelligenceRegistry";
+import { calculateDataQuality } from "./DataQualityCalculator";
+import { calculateOverallScoreFromEngineOutputs } from "./OverallScoreCalculator";
+import type { IntelligenceEngineOutputs } from "./ProductIntelligenceResultBuilder";
+import { buildProductIntelligenceFromEngineOutputs } from "./ProductIntelligenceResultBuilder";
 
-  const shipping = analyzeShipping({
-    shippingDays: product.shippingDays,
-    shippingCost: 3.99,
-    availableToUK: true,
-  });
+export async function analyzeProductIntelligence(
+  product: Product
+): Promise<ProductIntelligence> {
+  const engineOutputs: IntelligenceEngineOutputs = {};
 
-  const supplier = analyzeSupplier({
-    supplierRating: 4.5,
-    fulfilmentRate: 92,
-    orderHistory: 1200,
-  });
+  for (const engine of getRegisteredEngines()) {
+    if (!engine.enabled) continue;
 
-  const reviews = analyzeReviews({
-    averageRating: 4.6,
-    reviewCount: 850,
-    sentimentScore: 88,
-  });
+    const result = await engine.execute(product);
 
-  const seasonality = analyzeSeasonality({
-    currentMonth: new Date().getMonth() + 1,
-    peakMonths: [11, 12, 1],
-  });
+    engineOutputs[engine.id] = {
+      score: Math.max(0, Math.min(100, Math.round(engine.getScore(result)))),
+      weight: engine.weight,
+      version: engine.version,
+      result,
+    };
+  }
 
-  const demand = analyzeDemand({
-    trendScore: product.trendScore,
-    searchVolumeScore: 75,
-    socialMentionsScore: 70,
-  });
+  const { overallScore } = calculateOverallScoreFromEngineOutputs(engineOutputs);
+  const dataQuality = calculateDataQuality(engineOutputs);
 
-  const competition = analyzeCompetition({
-    competitionScore: product.competitionScore,
-    sellerCountScore: 60,
-    priceSaturationScore: 55,
-  });
-
-  const confidence = analyzeConfidence({
-    dataCompletenessScore: 80,
-    providerAgreementScore: 75,
-    dataFreshnessScore: 85,
-  });
-
-  const dataQuality = {
-    status: "mixed" as const,
-    estimatedFields: [
-      "shippingCost",
-      "advertisingCost",
-      "returnAllowance",
-      "supplierRating",
-      "fulfilmentRate",
-      "supplierOrderHistory",
-      "averageRating",
-      "reviewCount",
-      "reviewSentiment",
-      "searchVolume",
-      "socialMentions",
-      "sellerCount",
-      "priceSaturation",
-      "providerAgreement",
-    ],
-  };
-
-  const overallScore = calculateOverallScore({
-    demand: demand.demandScore,
-    competition: competition.competitionOpportunityScore,
-    profit: profit.profitScore,
-    supplier: supplier.supplierScore,
-    shipping: shipping.shippingScore,
-    reviews: reviews.reviewScore,
-    seasonality: seasonality.seasonalityScore,
-    confidence: confidence.confidenceScore,
-  });
-
-  return {
-    demand,
-    competition,
-    profit,
-    shipping,
-    supplier,
-    reviews,
-    seasonality,
-    confidence,
+  return buildProductIntelligenceFromEngineOutputs({
+    engineOutputs,
     overallScore,
     dataQuality,
-  };
+    verification: product.verification,
+  });
 }

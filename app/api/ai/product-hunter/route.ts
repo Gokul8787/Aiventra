@@ -1,69 +1,86 @@
 import { NextResponse } from "next/server";
-import { collectTrendingProducts } from "@/ai/agents/trendCollector";
-import { addReasoning } from "@/ai/agents/reasoningEngine";
+import { createApiErrorResponse } from "@/auth/apiErrorResponse";
 import {
-  getTopRecommendations,
-  RECOMMENDATION_THRESHOLD,
-} from "@/ai/agents/recommendationEngine";
-import { generateProductInsight } from "@/ai/agents/productInsightAgent";
-import { analyzeProductIntelligence } from "@/ai/intelligence/productIntelligenceEngine";
-import { persistProductHunterRun } from "@/services/productHunter/persistProductHunterRun";
-import { getProductPersistenceKey } from "@/services/repositories/productsRepository";
+  AuthorisationError,
+  requireApiContext,
+  type AuthenticatedApiContext,
+} from "@/auth/requireApiContext";
+import { enforceRateLimit } from "@/security/rateLimiter";
+import { writeAuditLog } from "@/security/auditLogger";
+import { enqueueProductScanJob } from "@/services/jobs/enqueueProductScanJob";
 
-export async function GET() {
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function POST(request: Request) {
+  let context: AuthenticatedApiContext | undefined;
+
   try {
-    const { products, sources } = await collectTrendingProducts();
-    const productsWithReasoning = addReasoning(products);
-    const intelligentProducts = productsWithReasoning.map((product) => {
-      const intelligence = analyzeProductIntelligence(product);
+    const body = await request.json().catch(() => ({}));
+    context = await requireApiContext(request, "product_scan.run");
 
-      return {
-        ...product,
-        aiScore: intelligence.overallScore,
-        intelligence,
-      };
+    await enforceRateLimit(`user:${context.user.id}`, {
+      route: "product-hunter-scan",
+      maximumRequests: 10,
+      windowSeconds: 3600,
     });
 
-    const recommendations = await Promise.all(
-      getTopRecommendations(intelligentProducts).map(async (product) => ({
-        ...product,
-        reason: await generateProductInsight(product),
-      }))
-    );
-
-    const persistence = await persistProductHunterRun({
-      products: intelligentProducts,
-      recommendations,
-      sources,
-      recommendationThreshold: RECOMMENDATION_THRESHOLD,
-      searchQuery: "pet",
+    const result = await enqueueProductScanJob({
+      tenantContext: context.tenantContext,
+      searchQuery: String(body.searchQuery || "pet"),
+      generateInsights:
+        typeof body.generateInsights === "boolean"
+          ? body.generateInsights
+          : true,
     });
 
-    const persistedRecommendations = recommendations.map((product) => ({
-      ...product,
-      databaseId:
-        persistence.productDatabaseIds[getProductPersistenceKey(product)],
-    }));
-
-    return NextResponse.json({
-      success: true,
-      jobId: persistence.jobId,
-      scanId: persistence.scanId,
-      totalProducts: intelligentProducts.length,
-      recommendedProducts: recommendations.length,
-      sources,
-      products: persistedRecommendations,
-      generatedAt: new Date().toISOString(),
+    await writeAuditLog({
+      context,
+      request,
+      action: "product_scan.queued",
+      resourceType: "ai_job",
+      resourceId: result.jobId,
+      outcome: "success",
     });
-  } catch (error) {
-    console.error("AI Product Hunter failed:", error);
 
     return NextResponse.json(
       {
-        success: false,
-        message: "AI Product Hunter failed",
+        success: true,
+        jobId: result.jobId,
+        queueMessageId: result.queueMessageId,
+        status: result.status,
+        tenantContext: context.tenantContext,
       },
-      { status: 500 }
+      { status: 202 }
     );
+  } catch (error) {
+    await writeAuditLog({
+      context,
+      request,
+      action: "product_scan.queued",
+      resourceType: "ai_job",
+      outcome: error instanceof AuthorisationError ? "denied" : "failure",
+      metadata: {
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
+    });
+
+    return createApiErrorResponse(error);
   }
+}
+
+export async function GET() {
+  return NextResponse.json(
+    {
+      success: false,
+      message:
+        "Product Hunter now runs as a background job. Use POST /api/jobs/product-scan.",
+    },
+    {
+      status: 405,
+      headers: {
+        Allow: "POST",
+      },
+    }
+  );
 }

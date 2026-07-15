@@ -1,21 +1,27 @@
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
-function getRequiredPublicEnvironmentVariable(name: string): string {
-  const value = process.env[name]?.trim();
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
 
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
+function getSupabaseBrowserConfig() {
+  if (!supabaseUrl) {
+    throw new Error("Missing required environment variable: NEXT_PUBLIC_SUPABASE_URL");
   }
 
-  return value;
+  if (!supabaseAnonKey) {
+    throw new Error(
+      "Missing required environment variable: NEXT_PUBLIC_SUPABASE_ANON_KEY"
+    );
+  }
+
+  return {
+    supabaseUrl,
+    supabaseAnonKey,
+  };
 }
 
-const supabaseUrl = getRequiredPublicEnvironmentVariable(
-  "NEXT_PUBLIC_SUPABASE_URL"
-);
+export function createSupabaseBrowserClient() {
+  const config = getSupabaseBrowserConfig();
 
-const supabasePublishableKey = getRequiredPublicEnvironmentVariable(
-  "NEXT_PUBLIC_SUPABASE_ANON_KEY"
-);
-
-export const supabase = createClient(supabaseUrl, supabasePublishableKey);
+  return createBrowserClient(config.supabaseUrl, config.supabaseAnonKey);
+}

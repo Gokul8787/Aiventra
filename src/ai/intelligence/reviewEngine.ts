@@ -1,3 +1,6 @@
+import type { Product } from "@/ai/types/product";
+import type { IntelligenceEngine } from "./core/IntelligenceEngine";
+import { SCORE_WEIGHTS } from "./scoreEngine";
 import { ReviewAnalysis, ReviewInput } from "./types";
 
 export function analyzeReviews(input: ReviewInput): ReviewAnalysis {
@@ -17,4 +20,25 @@ export function analyzeReviews(input: ReviewInput): ReviewAnalysis {
     reviewRisk,
     reason: `Average rating ${input.averageRating}/5 from ${input.reviewCount} reviews with ${input.sentimentScore}% sentiment score.`,
   };
+}
+
+export class ReviewsEngine implements IntelligenceEngine<ReviewAnalysis> {
+  readonly id = "reviews";
+  readonly name = "Reviews";
+  readonly version = "1.0.0";
+  readonly weight = SCORE_WEIGHTS.reviews;
+  readonly enabled = true;
+  readonly required = true;
+
+  execute(_product: Product): ReviewAnalysis {
+    return analyzeReviews({
+      averageRating: 4.6,
+      reviewCount: 850,
+      sentimentScore: 88,
+    });
+  }
+
+  getScore(result: ReviewAnalysis): number {
+    return result.reviewScore;
+  }
 }

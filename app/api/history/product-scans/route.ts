@@ -1,24 +1,19 @@
 import { NextResponse } from "next/server";
+import { createApiErrorResponse } from "@/auth/apiErrorResponse";
+import { requireApiContext } from "@/auth/requireApiContext";
 import { getRecentScans } from "@/services/repositories/scanHistoryRepository";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const scans = await getRecentScans(10);
+    const context = await requireApiContext(request, "dashboard.read");
+    const scans = await getRecentScans(context.tenantContext, 10);
 
     return NextResponse.json({
       success: true,
+      tenantContext: context.tenantContext,
       scans,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        success: false,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to load scan history.",
-      },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error);
   }
 }

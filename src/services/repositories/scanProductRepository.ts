@@ -1,12 +1,15 @@
 import "server-only";
 import { supabaseAdmin } from "@/services/supabase/admin";
 import { Product } from "@/ai/types/product";
+import type { TenantContext } from "@/context/storeContext";
+import { tenantColumns } from "@/context/storeContext";
 import {
   getProductPersistenceKey,
   PersistedProduct,
 } from "./productsRepository";
 
 export async function linkProductsToScan(input: {
+  tenantContext: TenantContext;
   scanId: string;
   products: Product[];
   recommendedProductIds: Set<string>;
@@ -31,6 +34,7 @@ export async function linkProductsToScan(input: {
 
     return [
       {
+        ...tenantColumns(input.tenantContext),
         scan_id: input.scanId,
         product_id: persistedProduct.id,
         recommended,

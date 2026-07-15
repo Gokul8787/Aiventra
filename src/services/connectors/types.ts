@@ -1,3 +1,5 @@
+import type { TenantContext } from "@/context/storeContext";
+
 export interface PublishProductInput {
   title: string;
   description: string;
@@ -17,6 +19,7 @@ export interface PublishProductInput {
 export interface PublishResult {
   success: boolean;
   externalId?: string;
+  externalVariantId?: string;
   externalUrl?: string;
   message?: string;
 }
@@ -24,5 +27,8 @@ export interface PublishResult {
 export interface EcommerceConnector {
   name: string;
 
-  publishProduct(product: PublishProductInput): Promise<PublishResult>;
+  publishProduct(
+    tenantContext: TenantContext,
+    product: PublishProductInput
+  ): Promise<PublishResult>;
 }

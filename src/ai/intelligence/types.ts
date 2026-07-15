@@ -1,11 +1,4 @@
-export interface ProfitInput {
-  supplierCost: number;
-  shippingCost: number;
-  sellPrice: number;
-  platformFeePercent: number;
-  estimatedAdCost: number;
-  returnAllowancePercent: number;
-}
+import type { EvidenceMetric, ProductEvidence } from "@/ai/evidence/types";
 
 export interface ProfitAnalysis {
   grossProfit: number;
@@ -27,12 +20,6 @@ export interface ShippingAnalysis {
   shippingScore: number;
   shippingRisk: "low" | "medium" | "high";
   reason: string;
-}
-
-export interface SupplierInput {
-  supplierRating: number;
-  fulfilmentRate: number;
-  orderHistory: number;
 }
 
 export interface SupplierAnalysis {
@@ -89,13 +76,25 @@ export interface CompetitionAnalysis {
 }
 
 export interface ConfidenceInput {
-  dataCompletenessScore: number;
-  providerAgreementScore: number;
-  dataFreshnessScore: number;
+  evidence: ProductEvidence[];
+  requiredMetrics: EvidenceMetric[];
 }
 
 export interface ConfidenceAnalysis {
   confidenceScore: number;
   confidenceRisk: "low" | "medium" | "high";
+
+  evidenceCount: number;
+  verifiedEvidenceCount: number;
+  sourceCount: number;
+
+  completenessScore: number;
+  freshnessScore: number;
+  reliabilityScore: number;
+  agreementScore: number;
+
+  missingMetrics: EvidenceMetric[];
+  conflictingMetrics: EvidenceMetric[];
+
   reason: string;
 }
