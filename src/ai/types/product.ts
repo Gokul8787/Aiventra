@@ -44,6 +44,11 @@ export interface Product {
   stock?: number;
   averageRating?: number;
   reviewCount?: number;
+  discoveryWarnings?: string[];
+  discoverySignals?: {
+    supplierPriceKnown?: boolean;
+    stockKnown?: boolean;
+  };
   evidence?: ProductEvidence[];
   evidenceRecords?: Evidence[];
   verification?: VerificationSummary;

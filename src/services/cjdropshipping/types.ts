@@ -10,17 +10,20 @@ export interface CJProductListItem {
   productUrl?: string;
   sellPrice?: string;
   nowPrice?: string;
+  productPrice?: string;
+  productPriceRange?: string;
   discountPrice?: string;
-  listedNum?: number;
-  listingCount?: number;
-  inventoryNum?: number;
+  listedNum?: string | number;
+  listingCount?: string | number;
+  inventoryNum?: string | number;
+  totalInventory?: string | number;
   categoryId?: string;
   categoryName?: string;
   threeCategoryName?: string;
   twoCategoryName?: string;
   oneCategoryName?: string;
   supplierName?: string;
-  warehouseInventoryNum?: number;
+  warehouseInventoryNum?: string | number;
   deliveryCycle?: string;
 }
 

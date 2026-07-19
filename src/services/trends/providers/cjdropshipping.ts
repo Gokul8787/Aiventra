@@ -14,6 +14,12 @@ export const cjDropshippingProvider: TrendProvider = {
         queries: discovery.sources,
         rejectedCount: discovery.rejectedCount,
         stats: discovery.stats,
+        diagnostic: {
+          rawProductFieldNames: discovery.rawProductFieldNames,
+        },
+        rejectionSummary: discovery.rejectionSummary,
+        warningSummary: discovery.warningSummary,
+        rejectionSamples: discovery.rejectionSamples,
       },
     };
   },

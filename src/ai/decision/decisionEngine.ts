@@ -203,6 +203,18 @@ export function evaluateProductDecision(
     );
   }
 
+  const requiredFulfilmentEvidence = [
+    verification?.byCategory.product_cost?.status,
+    verification?.byCategory.inventory?.status,
+    verification?.byCategory.shipping?.status,
+  ];
+
+  if (requiredFulfilmentEvidence.some((status) => status !== "verified")) {
+    readinessBlockingReasons.push(
+      "Supplier fulfilment evidence is incomplete."
+    );
+  }
+
   readinessBlockingReasons.push(
     ...(verification?.blockingReasons.slice(0, 5) || [])
   );

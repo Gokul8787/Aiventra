@@ -6,7 +6,10 @@ import { normalizeCJProduct } from "@/services/normalizers/cjNormalizer";
 
 import { DISCOVERY_SETTINGS } from "./discoveryConfig";
 import { deduplicateProducts } from "./deduplicateProducts";
-import { filterDiscoveryProducts } from "./filterDiscoveryProducts";
+import {
+  filterDiscoveryProducts,
+  summariseDiscoveryReasons,
+} from "./filterDiscoveryProducts";
 import { getDiscoveryQueries } from "./queryRotation";
 import type { ProductScanRequest } from "./productScanRequest";
 
@@ -45,17 +48,35 @@ export async function discoverCJProducts(
   sources: CJDiscoverySourceResult[];
   rejectedCount: number;
   stats: CJDiscoveryStats;
+  rejectionSummary: Record<string, number>;
+  rejectionSamples: Array<{
+    productId: string;
+    productName: string;
+    reasons: string[];
+  }>;
+  warningSummary: Record<string, number>;
+  rawProductFieldNames: string[];
 }> {
   const queries = getDiscoveryQueries(request);
 
   const collected: Product[] = [];
   const sources: CJDiscoverySourceResult[] = [];
   const coveredCategories = new Set<string>();
+  let rawProductFieldNames: string[] = [];
 
   // Intentionally sequential because CJ is globally limited to one request per second.
   for (const discoveryQuery of queries) {
     try {
       const cjProducts = await getCJProducts(discoveryQuery.query);
+      if (rawProductFieldNames.length === 0) {
+        const firstRawProduct = cjProducts[0] as
+          | Record<string, unknown>
+          | undefined;
+
+        rawProductFieldNames = firstRawProduct
+          ? Object.keys(firstRawProduct).sort()
+          : [];
+      }
       const limitedProducts = cjProducts.slice(0, discoveryQuery.maximumProducts);
       const normalizedProducts = limitedProducts
         .map(normalizeCJProduct)
@@ -92,10 +113,19 @@ export async function discoverCJProducts(
 
   const uniqueProducts = deduplicateProducts(collected);
   const filtered = filterDiscoveryProducts(uniqueProducts);
-  const products = filtered.accepted.slice(
-    0,
-    DISCOVERY_SETTINGS.maximumTotalProducts
+  const rejectionSummary = summariseDiscoveryReasons(filtered.rejected);
+  const warningSummary = summariseDiscoveryReasons(
+    filtered.warnings.map((item) => ({
+      ...item,
+      reasons: item.warnings,
+    }))
   );
+  const products = filtered.accepted
+    .slice(
+      0,
+      DISCOVERY_SETTINGS.maximumTotalProducts
+    )
+    .map((candidate) => candidate.product);
 
   return {
     products,
@@ -111,5 +141,9 @@ export async function discoverCJProducts(
       passedFirstFilter: products.length,
       rejectedCount: filtered.rejected.length,
     },
+    rejectionSummary,
+    warningSummary,
+    rejectionSamples: filtered.rejected.slice(0, 5),
+    rawProductFieldNames,
   };
 }

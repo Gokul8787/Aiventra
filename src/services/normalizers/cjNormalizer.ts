@@ -2,41 +2,85 @@ import { Product } from "@/ai/types/product";
 import { ProductEvidence } from "@/ai/evidence/types";
 import { CJProductListItem } from "@/services/cjdropshipping/types";
 
-function toNumber(value?: string | number) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+export function parseCJNumber(
+  value?: string | number | null
+): number | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+
+  const matches = value.match(/\d+(?:\.\d+)?/g);
+
+  if (!matches?.length) {
+    return undefined;
+  }
+
+  const numbers = matches.map(Number).filter(Number.isFinite);
+
+  if (!numbers.length) {
+    return undefined;
+  }
+
+  return Math.max(...numbers);
 }
 
 export function normalizeCJProduct(item: CJProductListItem): Product {
-  const supplierPrice = toNumber(item.sellPrice || item.nowPrice);
-  const sellPrice = Number((supplierPrice * 2.5).toFixed(2));
-  const stock = item.inventoryNum || item.warehouseInventoryNum || 0;
+  const supplierPrice = parseCJNumber(
+    item.nowPrice ??
+      item.sellPrice ??
+      item.productPrice ??
+      item.productPriceRange
+  );
+  const stock = parseCJNumber(
+    item.inventoryNum ?? item.warehouseInventoryNum ?? item.totalInventory
+  );
+  const supplierPriceKnown = supplierPrice !== undefined;
+  const stockKnown = stock !== undefined;
+  const safeSupplierPrice = supplierPrice ?? 0;
+  const sellPrice = Number((safeSupplierPrice * 2.5).toFixed(2));
   const observedAt = new Date().toISOString();
   const evidence: ProductEvidence[] = [
     {
       source: "cj",
       metric: "price",
-      value: supplierPrice,
-      normalizedScore: supplierPrice > 0 ? 100 : 0,
+      value: safeSupplierPrice,
+      normalizedScore: supplierPriceKnown ? 100 : 0,
       reliability: 90,
       freshness: 100,
-      completeness: supplierPrice > 0 ? 100 : 0,
+      completeness: supplierPriceKnown ? 100 : 0,
       observedAt,
-      verified: true,
+      verified: supplierPriceKnown,
       metadata: {
-        field: item.nowPrice ? "nowPrice" : "sellPrice",
+        field: item.nowPrice
+          ? "nowPrice"
+          : item.sellPrice
+            ? "sellPrice"
+            : item.productPrice
+              ? "productPrice"
+              : item.productPriceRange
+                ? "productPriceRange"
+                : "unknown",
+        supplierPriceKnown,
       },
     },
     {
       source: "cj",
       metric: "stock",
-      value: stock,
-      normalizedScore: stock >= 100 ? 90 : stock >= 20 ? 65 : 25,
+      value: stock ?? 0,
+      normalizedScore:
+        stock === undefined ? 0 : stock >= 100 ? 90 : stock >= 20 ? 65 : 25,
       reliability: 85,
       freshness: 100,
-      completeness: stock !== undefined ? 100 : 0,
+      completeness: stockKnown ? 100 : 0,
       observedAt,
-      verified: true,
+      verified: stockKnown,
+      metadata: {
+        stockKnown,
+      },
     },
     {
       source: "cj",
@@ -73,7 +117,7 @@ export function normalizeCJProduct(item: CJProductListItem): Product {
     name: item.productNameEn || item.nameEn || "CJ Product",
     category: item.categoryName || "General",
     supplier: "CJ Dropshipping",
-    supplierPrice,
+    supplierPrice: safeSupplierPrice,
     sellPrice,
     shippingDays: 7,
     trendScore: 75,
@@ -89,6 +133,10 @@ export function normalizeCJProduct(item: CJProductListItem): Product {
     stock,
     averageRating: 0,
     reviewCount: 0,
+    discoverySignals: {
+      supplierPriceKnown,
+      stockKnown,
+    },
     evidence,
   };
 }
