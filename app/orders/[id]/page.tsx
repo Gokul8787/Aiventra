@@ -1,14 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePageContext } from "@/auth/requirePageContext";
-import { getCustomerById } from "@/services/repositories/customerRepository";
-import {
-  getOrderById,
-  getOrderEvents,
-  getOrderItems,
-  getOrderValidations,
-} from "@/services/repositories/orderRepository";
-import { getFulfilmentChecksForOrder } from "@/services/repositories/supplierFulfilmentRepository";
+import { getOrderWorkspace } from "@/services/orders/getOrderWorkspace";
+import type {
+  SupplierOrderRecord,
+  SupplierPaymentApprovalRecord,
+} from "@/services/repositories/supplierOrderRepository";
 import {
   getOrderReadinessBadge,
   type OrderValidationStatus,
@@ -25,22 +22,25 @@ export const dynamic = "force-dynamic";
 export default async function OrderWorkspacePage({ params }: OrderPageProps) {
   const { id } = await params;
   const tenantContext = await requirePageContext("orders.read");
-  const order = await getOrderById(tenantContext, id);
+  const workspace = await getOrderWorkspace(tenantContext, id);
 
-  if (!order) {
+  if (!workspace) {
     notFound();
   }
-
-  const [items, validations, events, customer, fulfilmentChecks] = await Promise.all([
-    getOrderItems(tenantContext, order.id),
-    getOrderValidations(tenantContext, order.id),
-    getOrderEvents(tenantContext, order.id),
-    order.customerId
-      ? getCustomerById(tenantContext, order.customerId)
-      : Promise.resolve(null),
-    getFulfilmentChecksForOrder(tenantContext, order.id),
-  ]);
+  const {
+    order,
+    items,
+    validations,
+    events,
+    customer,
+    fulfilmentChecks,
+    supplierOrderDetails,
+    platformFulfilmentDetails,
+    recovery,
+  } = workspace;
+  const supplierOrders = supplierOrderDetails.map(({ supplierOrder }) => supplierOrder);
   const latestValidation = validations[0];
+  const latestCancellation = recovery.cancellationRequest;
   const fulfilmentByItemId = new Map(
     fulfilmentChecks.map((check) => [check.orderItemId, check])
   );
@@ -108,7 +108,90 @@ export default async function OrderWorkspacePage({ params }: OrderPageProps) {
               label="AI Decision"
               value={latestValidation?.decision || "Pending"}
             />
+            <Summary
+              label="Recovery"
+              value={latestCancellation?.status || "Not requested"}
+            />
           </div>
+        </section>
+
+        <section className="mt-8 rounded-2xl bg-slate-900 p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold">Recovery</h2>
+              <p className="mt-2 text-sm text-slate-400">
+                Cancellation recovery tracks queued work, supplier cancellation,
+                and any operator review that remains.
+              </p>
+            </div>
+            {latestCancellation ? (
+              <span className="rounded-full bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200">
+                {String(latestCancellation.status).replace(/_/g, " ")}
+              </span>
+            ) : null}
+          </div>
+
+          {latestCancellation ? (
+            <div className="mt-6 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <MiniSummary
+                  label="Decision"
+                  value={String(latestCancellation.decision || "Pending")}
+                />
+                <MiniSummary
+                  label="Confidence"
+                  value={
+                    latestCancellation.confidence == null
+                      ? "Unknown"
+                      : `${Number(latestCancellation.confidence).toFixed(0)}%`
+                  }
+                />
+                <MiniSummary
+                  label="Requested"
+                  value={new Date(
+                    String(latestCancellation.requested_at)
+                  ).toLocaleString("en-GB")}
+                />
+                <MiniSummary
+                  label="Last Error"
+                  value={String(latestCancellation.last_error || "None")}
+                />
+                <MiniSummary
+                  label="Attempts"
+                  value={String(recovery.attempts.length || 0)}
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <List
+                  title="Blockers"
+                  items={
+                    Array.isArray(latestCancellation.blockers)
+                      ? latestCancellation.blockers
+                      : []
+                  }
+                />
+                <List
+                  title="Warnings"
+                  items={
+                    Array.isArray(latestCancellation.warnings)
+                      ? latestCancellation.warnings
+                      : []
+                  }
+                />
+                <List
+                  title="Alerts"
+                  items={recovery.alerts.map((alert) =>
+                    String(alert.message || alert.title || "Recovery alert")
+                  )}
+                />
+              </div>
+            </div>
+          ) : (
+            <p className="mt-6 text-sm text-slate-400">
+              No recovery request has been created for this order yet.
+            </p>
+          )}
         </section>
 
         <section className="mt-8 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -251,6 +334,249 @@ export default async function OrderWorkspacePage({ params }: OrderPageProps) {
             </section>
 
             <section className="rounded-2xl bg-slate-900 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-2xl font-bold">Supplier Order</h2>
+                {canApproveFulfilment(order.status, supplierOrders) ? (
+                  <form
+                    action={`/api/orders/${order.id}/approve-fulfilment`}
+                    method="post"
+                  >
+                    <button className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-cyan-400">
+                      Approve Fulfilment
+                    </button>
+                  </form>
+                ) : null}
+              </div>
+
+              {supplierOrderDetails.length === 0 ? (
+                <p className="mt-5 text-sm text-slate-400">
+                  No supplier order has been created yet.
+                </p>
+              ) : (
+                <div className="mt-5 space-y-4">
+                  {supplierOrderDetails.map(
+                    ({ supplierOrder, paymentApproval, snapshots }) => (
+                    <div
+                      key={supplierOrder.id}
+                      className="rounded-xl bg-slate-800 p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                          <p className="font-semibold">
+                            {supplierOrder.provider.toUpperCase()}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Internal ID {supplierOrder.id}
+                          </p>
+                        </div>
+
+                        <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-slate-300">
+                          {supplierOrder.status}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <MiniSummary
+                          label="CJ order ID"
+                          value={supplierOrder.externalOrderId || "-"}
+                        />
+                        <MiniSummary
+                          label="CJ status"
+                          value={supplierOrder.remoteStatus || supplierOrder.status}
+                        />
+                        <MiniSummary
+                          label="CJ payment status"
+                          value={supplierOrder.paymentStatus}
+                        />
+                        <MiniSummary
+                          label="Parent order ID"
+                          value={supplierOrder.parentOrderId || "-"}
+                        />
+                        <MiniSummary
+                          label="Payment ID"
+                          value={supplierOrder.paymentId || "-"}
+                        />
+                        <MiniSummary
+                          label="Product cost"
+                          value={formatMoney(
+                            supplierOrder.currency,
+                            supplierOrder.productCost
+                          )}
+                        />
+                        <MiniSummary
+                          label="Shipping cost"
+                          value={formatMoney(
+                            supplierOrder.currency,
+                            supplierOrder.shippingCost
+                          )}
+                        />
+                        <MiniSummary
+                          label="Total supplier cost"
+                          value={formatMoney(
+                            supplierOrder.currency,
+                            supplierOrder.totalCost
+                          )}
+                        />
+                        <MiniSummary
+                          label="Submitted"
+                          value={formatDateTime(supplierOrder.submittedAt)}
+                        />
+                        <MiniSummary
+                          label="Last status sync"
+                          value={formatDateTime(supplierOrder.lastStatusSyncedAt)}
+                        />
+                        <MiniSummary
+                          label="Next status sync"
+                          value={formatDateTime(supplierOrder.nextStatusSyncAt)}
+                        />
+                        <MiniSummary
+                          label="API points remaining"
+                          value={formatNumber(supplierOrder.apiPointsRemaining)}
+                        />
+                        <MiniSummary
+                          label="Payment approval"
+                          value={formatPaymentApproval(paymentApproval)}
+                        />
+                        <MiniSummary
+                          label="Failure reason"
+                          value={supplierOrder.lastError || "-"}
+                        />
+                      </div>
+
+                      <SupplierOrderActions
+                        orderId={order.id}
+                        supplierOrder={supplierOrder}
+                        paymentApproval={paymentApproval}
+                      />
+
+                      {snapshots.length > 0 ? (
+                        <div className="mt-4 border-t border-slate-700 pt-4">
+                          <p className="font-semibold">Status Timeline</p>
+                          <div className="mt-3 space-y-2">
+                            {snapshots.map((snapshot) => (
+                              <div
+                                key={snapshot.id}
+                                className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-slate-300"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <span>
+                                    {snapshot.internalStatus}
+                                    {snapshot.remoteStatus
+                                      ? ` · ${snapshot.remoteStatus}`
+                                      : ""}
+                                    {snapshot.remotePaymentStatus
+                                      ? ` · ${snapshot.remotePaymentStatus}`
+                                      : ""}
+                                  </span>
+                                  <span className="text-xs text-slate-500">
+                                    {formatDateTime(snapshot.capturedAt)}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-2xl bg-slate-900 p-6">
+              <h2 className="text-2xl font-bold">Platform Fulfilment</h2>
+
+              {platformFulfilmentDetails.length === 0 ? (
+                <p className="mt-5 text-sm text-slate-400">
+                  No platform fulfilment has been created yet.
+                </p>
+              ) : (
+                <div className="mt-5 space-y-4">
+                  {platformFulfilmentDetails.map(({ platformFulfilment, events }) => (
+                    <div
+                      key={platformFulfilment.id}
+                      className="rounded-xl bg-slate-800 p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                          <p className="font-semibold">
+                            {platformFulfilment.platform.toUpperCase()}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Internal ID {platformFulfilment.id}
+                          </p>
+                        </div>
+
+                        <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-slate-300">
+                          {platformFulfilment.status}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <MiniSummary
+                          label="Fulfilment ID"
+                          value={platformFulfilment.externalFulfilmentId || "-"}
+                        />
+                        <MiniSummary
+                          label="External order ID"
+                          value={platformFulfilment.externalOrderId || "-"}
+                        />
+                        <MiniSummary
+                          label="Tracking"
+                          value={platformFulfilment.trackingNumber || "-"}
+                        />
+                        <MiniSummary
+                          label="Tracking URL"
+                          value={platformFulfilment.trackingUrl || "-"}
+                        />
+                        <MiniSummary
+                          label="Carrier"
+                          value={platformFulfilment.carrier || "-"}
+                        />
+                        <MiniSummary
+                          label="Customer notified"
+                          value={platformFulfilment.customerNotified ? "Yes" : "No"}
+                        />
+                        <MiniSummary
+                          label="Created"
+                          value={formatDateTime(platformFulfilment.createdAt)}
+                        />
+                        <MiniSummary
+                          label="Updated"
+                          value={formatDateTime(platformFulfilment.updatedAt)}
+                        />
+                      </div>
+
+                      {events.length > 0 ? (
+                        <div className="mt-4 border-t border-slate-700 pt-4">
+                          <p className="font-semibold">Fulfilment Events</p>
+                          <div className="mt-3 space-y-2">
+                            {events.map((event) => (
+                              <div
+                                key={event.id}
+                                className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-slate-300"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <span>
+                                    {event.eventType}
+                                    {event.message ? ` · ${event.message}` : ""}
+                                  </span>
+                                  <span className="text-xs text-slate-500">
+                                    {formatDateTime(event.createdAt)}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-2xl bg-slate-900 p-6">
               <h2 className="text-2xl font-bold">Validation</h2>
 
               {latestValidation ? (
@@ -361,10 +687,106 @@ function formatMoney(currency: string, value?: number) {
   return `${currency} ${value.toFixed(2)}`;
 }
 
+function formatDateTime(value?: string) {
+  if (!value) return "-";
+
+  return new Date(value).toLocaleString("en-GB");
+}
+
+function canApproveFulfilment(
+  orderStatus: string,
+  supplierOrders: SupplierOrderRecord[]
+) {
+  return (
+    orderStatus === "awaiting_fulfilment_approval" ||
+    (orderStatus === "awaiting_fulfilment" && supplierOrders.length === 0)
+  );
+}
+
+function getCJAdminUrl(externalOrderId?: string) {
+  const template = process.env.CJ_ORDER_ADMIN_URL_TEMPLATE;
+
+  if (!template || !externalOrderId) return undefined;
+
+  return template.replace("{orderId}", encodeURIComponent(externalOrderId));
+}
+
+function SupplierOrderActions({
+  orderId,
+  supplierOrder,
+  paymentApproval,
+}: {
+  orderId: string;
+  supplierOrder: SupplierOrderRecord;
+  paymentApproval: SupplierPaymentApprovalRecord | null;
+}) {
+  const cjUrl = getCJAdminUrl(supplierOrder.externalOrderId);
+  const canRetry = ["FAILED", "REVIEW_REQUIRED"].includes(
+    supplierOrder.status
+  );
+  const canApprovePayment =
+    supplierOrder.status === "AWAITING_PAYMENT" &&
+    paymentApproval?.status === "pending";
+
+  if (!canRetry && !cjUrl && !canApprovePayment) return null;
+
+  return (
+    <div className="mt-4 flex flex-wrap gap-3 border-t border-slate-700 pt-4">
+      {canRetry ? (
+        <form action={`/api/orders/${orderId}/approve-fulfilment`} method="post">
+          <button className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-bold text-white hover:bg-slate-600">
+            Retry
+          </button>
+        </form>
+      ) : null}
+
+      {canApprovePayment ? (
+        <form
+          action={`/api/orders/${orderId}/supplier-payment-approval`}
+          method="post"
+        >
+          <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500">
+            Approve Payment Readiness
+          </button>
+        </form>
+      ) : null}
+
+      {cjUrl ? (
+        <a
+          href={cjUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-bold text-white hover:bg-slate-600"
+        >
+          Open in CJ
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
 function formatPercent(value?: number) {
   if (value === undefined) return "-";
 
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+function formatNumber(value?: number) {
+  if (value === undefined) return "-";
+
+  return String(value);
+}
+
+function formatPaymentApproval(
+  approval: SupplierPaymentApprovalRecord | null
+) {
+  if (!approval) return "Not requested";
+
+  if (approval.status === "approved" && approval.approvedAt) {
+    return `Approved · ${formatDateTime(approval.approvedAt)}`;
+  }
+
+  return approval.status;
 }
 
 function formatDelivery(check: {

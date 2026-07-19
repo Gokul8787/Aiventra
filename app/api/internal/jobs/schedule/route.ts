@@ -1,38 +1,60 @@
 import { NextResponse } from "next/server";
+import { enqueueDueSupplierOrderStatusJobs } from "@/services/fulfilment/enqueueDueSupplierOrderStatusJobs";
+import { enqueueDueTrackingSyncJobs } from "@/services/fulfilment/enqueueDueTrackingSyncJobs";
 import { enqueueDueScheduledJobs } from "@/services/jobs/scheduler";
+import {
+  WorkerAuthenticationError,
+  requireWorkerSecret,
+} from "@/security/requireWorkerSecret";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-function isAuthorized(request: Request) {
-  const secret = process.env.AIVENTRA_WORKER_SECRET;
-
-  if (!secret) return true;
-
-  return request.headers.get("authorization") === `Bearer ${secret}`;
-}
-
 export async function POST(request: Request) {
-  if (!isAuthorized(request)) {
+  try {
+    requireWorkerSecret(request);
+  } catch (error) {
+    if (error instanceof WorkerAuthenticationError) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: error.message,
+        },
+        { status: error.status }
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,
-        message: "Unauthorized.",
+        message:
+          error instanceof Error ? error.message : "Worker authentication failed.",
       },
-      { status: 401 }
+      { status: 500 }
     );
   }
 
   try {
     const body = await request.json().catch(() => ({}));
-    const result = await enqueueDueScheduledJobs({
-      limit: Number(body.limit || 10),
-    });
+    const [scheduledJobs, supplierOrderStatusJobs, supplierTrackingJobs] =
+      await Promise.all([
+        enqueueDueScheduledJobs({
+          limit: Number(body.limit || 10),
+        }),
+        enqueueDueSupplierOrderStatusJobs({
+          limit: Number(body.supplierOrderLimit || body.limit || 10),
+        }),
+        enqueueDueTrackingSyncJobs({
+          limit: Number(body.trackingLimit || body.limit || 10),
+        }),
+      ]);
 
     return NextResponse.json({
       success: true,
-      ...result,
+      scheduledJobs,
+      supplierOrderStatusJobs,
+      supplierTrackingJobs,
     });
   } catch (error) {
     return NextResponse.json(

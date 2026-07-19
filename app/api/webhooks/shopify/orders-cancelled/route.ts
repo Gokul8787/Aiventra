@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { processShopifyOrderWebhook } from "@/services/connectors/shopify/webhooks/processOrderWebhook";
+import { processShopifyCancellationWebhook } from "@/services/connectors/shopify/webhooks/processOrderWebhook";
 import { SHOPIFY_WEBHOOK_EVENTS } from "@/services/connectors/shopify/webhooks/webhookEvents";
 
 export const runtime = "nodejs";
@@ -13,11 +13,9 @@ function errorStatus(error: unknown) {
 
 export async function POST(request: Request) {
   try {
-    const result = await processShopifyOrderWebhook({
+    const result = await processShopifyCancellationWebhook({
       request,
       topic: SHOPIFY_WEBHOOK_EVENTS.ordersCancelled,
-      status: "cancelled",
-      enqueueValidation: false,
     });
 
     return NextResponse.json(result);

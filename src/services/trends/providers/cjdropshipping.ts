@@ -1,14 +1,20 @@
 import { TrendProvider } from "../types";
-import { Product } from "@/ai/types/product";
-import { getCJProducts } from "@/services/cjdropshipping/products";
-import { normalizeCJProduct } from "@/services/normalizers/cjNormalizer";
+import type { ProductScanRequest } from "@/services/productDiscovery/productScanRequest";
+import { discoverCJProducts } from "@/services/productDiscovery/discoverCJProducts";
 
 export const cjDropshippingProvider: TrendProvider = {
   name: "CJ Dropshipping",
 
-  async getProducts(): Promise<Product[]> {
-    const cjProducts = await getCJProducts("pet");
+  async getProducts(request?: ProductScanRequest) {
+    const discovery = await discoverCJProducts(request || { mode: "broad" });
 
-    return cjProducts.slice(0, 10).map(normalizeCJProduct);
+    return {
+      products: discovery.products,
+      metadata: {
+        queries: discovery.sources,
+        rejectedCount: discovery.rejectedCount,
+        stats: discovery.stats,
+      },
+    };
   },
 };

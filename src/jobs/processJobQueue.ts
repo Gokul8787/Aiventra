@@ -8,6 +8,7 @@ import {
   classifyJobError,
   getRetryDelaySeconds,
 } from "@/jobs/retryPolicy";
+import { classifyRecoveryFailure } from "@/recovery/retryPolicy";
 import type { JobMessage, JobQueueName } from "@/jobs/types";
 import type { TenantContext } from "@/context/storeContext";
 import {
@@ -26,6 +27,20 @@ import {
   rescheduleBackgroundJob,
   updateJobProgress,
 } from "@/services/repositories/backgroundJobRepository";
+import { updateCancellationRequest } from "@/services/repositories/cancellationRepository";
+import { createOperationsAlert } from "@/services/repositories/operationsAlertRepository";
+import {
+  createDeadLetterItem,
+  failRecoveryAttempt,
+  getRecoveryAttemptId,
+} from "@/services/repositories/recoveryRepository";
+
+const RECOVERY_JOB_TYPES = new Set([
+  "ORDER_CANCELLATION",
+  "SUPPLIER_CANCELLATION",
+  "RECOVERY_RETRY",
+  "DEAD_LETTER_REPLAY",
+] as const);
 
 function tenantContextFromMessage(message: JobMessage): TenantContext {
   const payloadContext = message.payload.tenantContext as
@@ -66,9 +81,13 @@ async function retryMessage(input: {
   queueName: JobQueueName;
   errorMessage: string;
   retryable: boolean;
+  delaySeconds?: number;
 }) {
   const nextAttempt = input.message.attempt + 1;
-  const delaySeconds = getRetryDelaySeconds(nextAttempt);
+  const delaySeconds =
+    input.delaySeconds === undefined
+      ? getRetryDelaySeconds(nextAttempt)
+      : input.delaySeconds;
   const nextRetryAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
 
   await markJobRetrying({
@@ -109,8 +128,45 @@ async function retryMessage(input: {
 async function deadLetterMessage(input: {
   message: JobMessage;
   tenantContext: TenantContext;
+  queueName: JobQueueName;
+  maxAttempts: number;
   errorMessage: string;
 }) {
+  if (isRecoveryJob(input.message.jobType)) {
+    const cancellationRequestId = getCancellationRequestId(input.message);
+    const deadLetterId = await createDeadLetterItem({
+      organisationId: input.message.organisationId,
+      storeId: input.message.storeId,
+      sourceQueue: input.queueName,
+      jobId: input.message.jobId,
+      cancellationRequestId,
+      jobType: input.message.jobType.toLowerCase(),
+      payload: input.message.payload,
+      errorMessage: input.errorMessage,
+      attemptCount: input.message.attempt,
+      maxAttempts: input.maxAttempts,
+      idempotencyKey: `dead-letter:${input.message.jobId}:${input.message.attempt}`,
+    });
+
+    await createOperationsAlert({
+      organisationId: input.message.organisationId,
+      storeId: input.message.storeId,
+      severity: "critical",
+      category: "recovery",
+      title: "Recovery job moved to dead letter",
+      message: input.errorMessage,
+      resourceType: "ai_job",
+      resourceId: input.message.jobId,
+      dedupeKey: `recovery-dead-letter:${input.message.jobId}`,
+      metadata: {
+        deadLetterItemId: deadLetterId,
+        jobType: input.message.jobType,
+        queueName: input.queueName,
+        attempt: input.message.attempt,
+      },
+    });
+  }
+
   await moveToDeadLetter(input.message, input.errorMessage);
 
   await failBackgroundJob({
@@ -130,6 +186,84 @@ async function deadLetterMessage(input: {
       errorMessage: input.errorMessage,
       attempt: input.message.attempt,
     },
+  });
+}
+
+function isRecoveryJob(jobType: string) {
+  return RECOVERY_JOB_TYPES.has(jobType as (typeof RECOVERY_JOB_TYPES extends Set<infer T> ? T : never));
+}
+
+function getCancellationRequestId(message: JobMessage): string | undefined {
+  const value = message.payload.cancellationRequestId;
+
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function getRecoveryAction(jobType: string) {
+  switch (jobType) {
+    case "ORDER_CANCELLATION":
+      return "ORDER_CANCELLATION";
+    case "SUPPLIER_CANCELLATION":
+      return "SUPPLIER_CANCELLATION";
+    case "RECOVERY_RETRY":
+      return "RECOVERY_RETRY";
+    case "DEAD_LETTER_REPLAY":
+      return "DEAD_LETTER_REPLAY";
+    default:
+      return jobType;
+  }
+}
+
+async function syncRecoveryAttemptFailure(input: {
+  message: JobMessage;
+  status: "retrying" | "dead_letter" | "failed";
+  retryable: boolean;
+  errorMessage: string;
+}) {
+  const cancellationRequestId = getCancellationRequestId(input.message);
+
+  if (!cancellationRequestId) return;
+
+  const recoveryAttemptId = await getRecoveryAttemptId({
+    cancellationRequestId,
+    attemptNumber: input.message.attempt,
+    action: getRecoveryAction(input.message.jobType),
+  });
+
+  if (!recoveryAttemptId) return;
+
+  await failRecoveryAttempt({
+    recoveryAttemptId,
+    status: input.status,
+    retryable: input.retryable,
+    errorMessage: input.errorMessage,
+  });
+}
+
+async function syncRecoveryRequestFailure(input: {
+  message: JobMessage;
+  maxAttempts: number;
+  errorMessage: string;
+  nextRetryAt?: string;
+  final: boolean;
+}) {
+  const cancellationRequestId = getCancellationRequestId(input.message);
+
+  if (!cancellationRequestId) return;
+
+  await updateCancellationRequest({
+    cancellationRequestId,
+    status: input.final ? "failed" : "checking",
+    attemptCount: input.message.attempt,
+    maxAttempts: input.maxAttempts,
+    nextRetryAt:
+      input.nextRetryAt === undefined
+        ? input.final
+          ? null
+          : undefined
+        : input.nextRetryAt,
+    lastError: input.errorMessage,
+    processingCompletedAt: input.final ? new Date().toISOString() : undefined,
   });
 }
 
@@ -291,24 +425,67 @@ export async function processJobQueue(input?: {
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       const existingJob = await getBackgroundJob(tenantContext, message.jobId);
-      const classification = classifyJobError(error);
-      const retryable = classification === "retryable";
       const maxAttempts = existingJob?.maxAttempts || 5;
-      const shouldDeadLetter = !retryable || message.attempt >= maxAttempts;
+      const recoveryDecision = isRecoveryJob(message.jobType)
+        ? classifyRecoveryFailure(error, message.attempt, maxAttempts)
+        : null;
+      const classification = recoveryDecision
+        ? recoveryDecision.retry
+          ? "retryable"
+          : "permanent"
+        : classifyJobError(error);
+      const retryable = recoveryDecision
+        ? recoveryDecision.retry
+        : classification === "retryable";
+      const shouldDeadLetter = recoveryDecision
+        ? recoveryDecision.moveToDeadLetter
+        : !retryable || message.attempt >= maxAttempts;
 
       if (shouldDeadLetter) {
+        await syncRecoveryAttemptFailure({
+          message,
+          status: "dead_letter",
+          retryable: false,
+          errorMessage,
+        });
+        await syncRecoveryRequestFailure({
+          message,
+          maxAttempts,
+          errorMessage,
+          final: true,
+        });
         await deadLetterMessage({
           message,
           tenantContext,
+          queueName,
+          maxAttempts,
           errorMessage,
         });
       } else {
+        const delaySeconds = recoveryDecision?.delaySeconds;
+        const nextRetryAt = new Date(
+          Date.now() + (delaySeconds ?? getRetryDelaySeconds(message.attempt + 1)) * 1000
+        ).toISOString();
+        await syncRecoveryAttemptFailure({
+          message,
+          status: "retrying",
+          retryable: true,
+          errorMessage,
+        });
+        await syncRecoveryRequestFailure({
+          message,
+          maxAttempts,
+          errorMessage,
+          nextRetryAt,
+          final: false,
+        });
         await retryMessage({
           message,
           tenantContext,
           queueName,
           errorMessage,
           retryable,
+          delaySeconds,
         });
       }
 

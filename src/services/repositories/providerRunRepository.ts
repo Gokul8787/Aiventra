@@ -17,9 +17,10 @@ export async function saveProviderRuns(
     ...tenantColumns(tenantContext),
     scan_id: scanId,
     provider_name: source.name,
-    status: source.status === "success" ? "success" : "failed",
+    status: source.status,
     products_found: source.count,
     error_message: source.error || null,
+    metadata: source.metadata || {},
     started_at: now,
     completed_at: now,
   }));

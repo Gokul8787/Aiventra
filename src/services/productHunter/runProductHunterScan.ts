@@ -10,6 +10,11 @@ import { generateProductInsight } from "@/ai/agents/productInsightAgent";
 import type { TenantContext } from "@/context/storeContext";
 import { requireTenantContext } from "@/context/storeContext";
 import { analyseProduct } from "@/services/productAnalysis/analyseProduct";
+import type { ProductScanRequest } from "@/services/productDiscovery/productScanRequest";
+import {
+  getProductScanSearchLabel,
+  parseProductScanRequest,
+} from "@/services/productDiscovery/productScanRequest";
 import { getProductPersistenceKey } from "@/services/repositories/productsRepository";
 import {
   persistProductHunterRun,
@@ -19,6 +24,7 @@ import {
 export async function runProductHunterScan(input?: {
   tenantContext?: TenantContext;
   jobId?: string;
+  request?: ProductScanRequest;
   searchQuery?: string;
   generateInsights?: boolean;
   onProgress?: (progress: number, currentStep: string) => Promise<void>;
@@ -31,11 +37,17 @@ export async function runProductHunterScan(input?: {
   recommendations: Awaited<ReturnType<typeof collectTrendingProducts>>["products"];
 }> {
   const tenantContext = requireTenantContext(input?.tenantContext);
-  const searchQuery = input?.searchQuery || "pet";
+  const request = parseProductScanRequest(
+    input?.request || {
+      mode: input?.searchQuery ? "keyword" : "broad",
+      keyword: input?.searchQuery,
+    }
+  );
+  const searchQuery = input?.searchQuery || getProductScanSearchLabel(request);
   await input?.onProgress?.(5, "Starting");
 
   await input?.onProgress?.(15, "Collecting providers");
-  const { products, sources } = await collectTrendingProducts();
+  const { products, sources } = await collectTrendingProducts(request);
   const tenantProducts = products.map((product) => ({
     ...product,
     organisationId: tenantContext.organisationId,

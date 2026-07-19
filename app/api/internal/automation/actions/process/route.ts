@@ -1,26 +1,35 @@
 import { NextResponse } from "next/server";
 import { processAutomationActions } from "@/services/automation/processAutomationActions";
+import {
+  WorkerAuthenticationError,
+  requireWorkerSecret,
+} from "@/security/requireWorkerSecret";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-function isAuthorized(request: Request) {
-  const secret = process.env.AIVENTRA_WORKER_SECRET;
-
-  if (!secret) return true;
-
-  return request.headers.get("authorization") === `Bearer ${secret}`;
-}
-
 export async function POST(request: Request) {
-  if (!isAuthorized(request)) {
+  try {
+    requireWorkerSecret(request);
+  } catch (error) {
+    if (error instanceof WorkerAuthenticationError) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: error.message,
+        },
+        { status: error.status }
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,
-        message: "Unauthorized.",
+        message:
+          error instanceof Error ? error.message : "Worker authentication failed.",
       },
-      { status: 401 }
+      { status: 500 }
     );
   }
 

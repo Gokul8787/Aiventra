@@ -3,6 +3,8 @@ import { supabaseAdmin } from "@/services/supabase/admin";
 import type { TenantContext } from "@/context/storeContext";
 import { tenantColumns } from "@/context/storeContext";
 
+// Tenant-owned rows include organisation_id and store_id via tenantColumns.
+
 type ProductScanRow = {
   id: string;
 };

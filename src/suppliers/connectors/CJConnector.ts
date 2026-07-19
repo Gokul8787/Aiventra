@@ -2,6 +2,11 @@ import type { SupplierConnector } from "../SupplierConnector";
 import type {
   SupplierInventoryInput,
   SupplierInventoryResult,
+  SupplierOrderCreationInput,
+  SupplierOrderCreationResult,
+  SupplierOrderStatusResult,
+  SupplierTrackingResult,
+  SupplierCancellationResult,
   SupplierPriceInput,
   SupplierPriceResult,
   SupplierShippingQuoteInput,
@@ -12,12 +17,24 @@ import { testCJConnection } from "@/services/cjdropshipping/connection";
 import { getCJInventory } from "@/services/cjdropshipping/inventory";
 import { getCJProductCost } from "@/services/cjdropshipping/productCost";
 import { getCJShippingQuote } from "@/services/cjdropshipping/shipping";
+import { cancelCJOrder } from "@/services/cjdropshipping/orders/cancelOrder";
+import { createCJOrder } from "@/services/cjdropshipping/orders/createOrder";
+import { getCJOrder } from "@/services/cjdropshipping/orders/getOrder";
+import { getCJTracking } from "@/services/cjdropshipping/tracking/getTracking";
 
 export class CJConnector implements SupplierConnector {
   readonly id = "cj" as const;
   readonly name = "CJ Dropshipping";
 
-  readonly capabilities = ["inventory", "pricing", "shipping_quote"] as const;
+  readonly capabilities = [
+    "inventory",
+    "pricing",
+    "shipping_quote",
+    "order_creation",
+    "order_status",
+    "tracking",
+    "cancellation",
+  ] as const;
 
   async testConnection() {
     return testCJConnection();
@@ -86,5 +103,61 @@ export class CJConnector implements SupplierConnector {
       ],
       checkedAt: new Date().toISOString(),
     };
+  }
+
+  async createOrder(
+    input: SupplierOrderCreationInput
+  ): Promise<SupplierOrderCreationResult> {
+    const result = await createCJOrder({
+      clientOrderReference: input.clientOrderReference,
+      currency: input.currency,
+      destination: input.destination,
+      shippingMethodId: input.shippingMethodId,
+      metadata: input.metadata,
+      items: input.items.map((item) => ({
+        orderItemId: item.orderItemId,
+        productId: item.product.supplierProductId,
+        variantId: item.product.supplierVariantId,
+        sku: item.product.supplierSku,
+        warehouseId: item.product.warehouseId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        currency: item.currency,
+        shippingMethodId: item.shippingMethodId,
+      })),
+    });
+
+    return {
+      success: result.success,
+      externalOrderId: result.orderId,
+      status: result.status,
+      paymentRequired: true,
+      productCost: result.productCost,
+      shippingCost: result.shippingCost,
+      totalCost: result.totalCost,
+      raw: result.raw,
+      apiUsage: result.apiUsage,
+      errorMessage: result.success
+        ? undefined
+        : "CJ did not return an external order ID.",
+    };
+  }
+
+  async getOrderStatus(
+    externalOrderId: string
+  ): Promise<SupplierOrderStatusResult> {
+    return getCJOrder(externalOrderId);
+  }
+
+  async getTracking(
+    externalOrderId: string
+  ): Promise<SupplierTrackingResult> {
+    return getCJTracking(externalOrderId);
+  }
+
+  async cancelOrder(
+    externalOrderId: string
+  ): Promise<SupplierCancellationResult> {
+    return cancelCJOrder(externalOrderId);
   }
 }

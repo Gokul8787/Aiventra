@@ -37,7 +37,9 @@ export class SeasonalityEngine
   readonly enabled = true;
   readonly required = true;
 
-  execute(_product: Product): SeasonalityAnalysis {
+  execute(product: Product): SeasonalityAnalysis {
+    void product;
+
     return analyzeSeasonality({
       currentMonth: new Date().getMonth() + 1,
       peakMonths: [11, 12, 1],

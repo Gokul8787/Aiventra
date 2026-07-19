@@ -2,9 +2,12 @@ export type CommerceOrderStatus =
   | "received"
   | "validated"
   | "awaiting_fulfilment"
+  | "awaiting_fulfilment_approval"
   | "manual_review"
   | "blocked"
+  | "partially_fulfilled"
   | "fulfilled"
+  | "partially_refunded"
   | "cancelled"
   | "refunded";
 
@@ -14,6 +17,7 @@ export type OrderItemFulfilmentStatus =
   | "manual_review"
   | "supplier_pending"
   | "supplier_ordered"
+  | "partially_fulfilled"
   | "fulfilled"
   | "cancelled"
   | "refunded";

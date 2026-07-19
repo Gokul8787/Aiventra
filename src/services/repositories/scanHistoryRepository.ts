@@ -26,6 +26,7 @@ export type RecentScan = {
     status: "success" | "failed" | "skipped";
     count: number;
     error?: string;
+    metadata?: Record<string, unknown>;
   }>;
 };
 
@@ -54,6 +55,7 @@ type ProviderRunRow = {
   status: "success" | "failed" | "skipped";
   products_found: number;
   error_message: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 function mapProviderRun(provider: ProviderRunRow) {
@@ -62,6 +64,7 @@ function mapProviderRun(provider: ProviderRunRow) {
     status: provider.status,
     count: provider.products_found,
     error: provider.error_message || undefined,
+    metadata: provider.metadata || undefined,
   };
 }
 
@@ -83,7 +86,8 @@ export async function getRecentScans(
           provider_name,
           status,
           products_found,
-          error_message
+          error_message,
+          metadata
         )
       `
     )
@@ -168,7 +172,7 @@ export async function getLatestSavedRecommendations(
       .order("rank", { ascending: true }),
     supabaseAdmin
       .from("provider_runs")
-      .select("provider_name, status, products_found, error_message")
+      .select("provider_name, status, products_found, error_message, metadata")
       .eq("organisation_id", tenantContext.organisationId)
       .eq("store_id", tenantContext.storeId)
       .eq("scan_id", scan.id),

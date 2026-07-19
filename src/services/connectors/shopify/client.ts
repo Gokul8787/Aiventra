@@ -1,6 +1,5 @@
 import { getShopifyAccessToken } from "./auth";
-
-const SHOPIFY_API_VERSION = "2026-07";
+import { getShopifyApiVersion } from "./config";
 
 type ShopifyGraphQLError = {
   message: string;
@@ -28,9 +27,10 @@ export async function shopifyGraphQL<T>(
 ): Promise<T> {
   const shop = getShopDomain();
   const accessToken = await getShopifyAccessToken();
+  const apiVersion = getShopifyApiVersion();
 
   const response = await fetch(
-    `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+    `https://${shop}/admin/api/${apiVersion}/graphql.json`,
     {
       method: "POST",
       headers: {

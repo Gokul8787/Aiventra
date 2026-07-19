@@ -17,7 +17,9 @@ import {
   getOrderById,
   getOrderItems,
   saveOrderValidation,
+  updateOrderStatus,
 } from "@/services/repositories/orderRepository";
+import { enqueueSupplierOrderCreationJob } from "@/services/jobs/enqueueSupplierOrderJob";
 import { saveFulfilmentCheck } from "@/services/repositories/supplierFulfilmentRepository";
 import { supabaseAdmin } from "@/services/supabase/admin";
 import type { JobHandler } from "./types";
@@ -320,6 +322,40 @@ export const orderValidationHandler: JobHandler = {
         causationId: message.jobId,
       },
     });
+
+    if (decision === "AUTO_FULFIL") {
+      await publishEvent({
+        tenantContext,
+        eventType: "AwaitingSupplier",
+        aggregateType: "order",
+        aggregateId: order.id,
+        payload: {
+          orderId: order.id,
+          jobId: message.jobId,
+          automaticSupplierOrderEnabled:
+            process.env.AIVENTRA_CJ_ORDER_CREATION_ENABLED === "true",
+        },
+        metadata: {
+          correlationId: message.correlationId,
+          causationId: message.jobId,
+        },
+      });
+
+      if (process.env.AIVENTRA_CJ_ORDER_CREATION_ENABLED === "true") {
+        await enqueueSupplierOrderCreationJob({
+          tenantContext,
+          orderId: order.id,
+          correlationId: message.correlationId,
+          causationId: message.jobId,
+        });
+      } else {
+        await updateOrderStatus({
+          tenantContext,
+          orderId: order.id,
+          status: "awaiting_fulfilment",
+        });
+      }
+    }
 
     return {
       resultReference: {

@@ -100,8 +100,15 @@ function mapJob(row: BackgroundJobRow): BackgroundJob {
     causationId: row.causation_id || undefined,
     createdAt: row.created_at,
     startedAt: row.started_at || undefined,
-    completedAt: row.completed_at || undefined,
+  completedAt: row.completed_at || undefined,
   };
+}
+
+function isUniqueViolation(error: { code?: string; message?: string }) {
+  return (
+    error.code === "23505" ||
+    error.message?.toLowerCase().includes("duplicate key")
+  );
 }
 
 const JOB_SELECT = `
@@ -129,6 +136,26 @@ const JOB_SELECT = `
   completed_at
 `;
 
+async function getJobByIdempotencyKey(
+  idempotencyKey: string
+): Promise<BackgroundJob | null> {
+  const { data, error } = await supabaseAdmin
+    .from("ai_jobs")
+    .select(JOB_SELECT)
+    .eq("idempotency_key", idempotencyKey)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle<BackgroundJobRow>();
+
+  if (error) {
+    throw new Error(
+      `Failed to load existing queued job: ${error.message}`
+    );
+  }
+
+  return data ? mapJob(data) : null;
+}
+
 export async function createQueuedJob(input: {
   tenantContext: TenantContext;
   jobType: AiventraJobType;
@@ -151,42 +178,31 @@ export async function createQueuedJob(input: {
     max_attempts: input.maxAttempts || 5,
   };
 
-  const query = supabaseAdmin
+  if (input.idempotencyKey) {
+    const existing = await getJobByIdempotencyKey(input.idempotencyKey);
+
+    if (existing) return existing;
+  }
+
+  const { data, error } = await supabaseAdmin
     .from("ai_jobs")
-    .upsert(row, {
-      onConflict: "idempotency_key",
-      ignoreDuplicates: Boolean(input.idempotencyKey),
-    })
+    .insert(row)
     .select(JOB_SELECT)
     .maybeSingle<BackgroundJobRow>();
 
-  const { data, error } = await query;
-
   if (error) {
+    if (input.idempotencyKey && isUniqueViolation(error)) {
+      const existing = await getJobByIdempotencyKey(input.idempotencyKey);
+
+      if (existing) return existing;
+    }
+
     throw new Error(`Failed to create queued job: ${error.message}`);
   }
 
   if (data) return mapJob(data);
 
-  if (!input.idempotencyKey) {
-    throw new Error("The queued job was not created.");
-  }
-
-  const { data: existing, error: existingError } = await supabaseAdmin
-    .from("ai_jobs")
-    .select(JOB_SELECT)
-    .eq("idempotency_key", input.idempotencyKey)
-    .single<BackgroundJobRow>();
-
-  if (existingError || !existing) {
-    throw new Error(
-      `Failed to load existing queued job: ${
-        existingError?.message || "No row returned"
-      }`
-    );
-  }
-
-  return mapJob(existing);
+  throw new Error("The queued job was not created.");
 }
 
 export async function saveQueueMessageId(

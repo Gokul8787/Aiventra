@@ -2,6 +2,7 @@ import "server-only";
 
 import type { TenantContext } from "@/context/storeContext";
 import { tenantPayload } from "@/context/storeContext";
+import type { ProductScanRequest } from "@/services/productDiscovery/productScanRequest";
 import { publishEvent } from "@/services/events/eventRepository";
 import { runProductHunterScan } from "@/services/productHunter/runProductHunterScan";
 import {
@@ -12,6 +13,7 @@ import {
 export async function handleProductScanJob(input: {
   tenantContext: TenantContext;
   jobId: string;
+  request: ProductScanRequest;
   searchQuery: string;
   generateInsights?: boolean;
 }) {
@@ -21,6 +23,7 @@ export async function handleProductScanJob(input: {
     level: "info",
     message: "Product scan job started.",
     context: {
+      request: input.request,
       searchQuery: input.searchQuery,
       tenantContext: tenantPayload(input.tenantContext),
     },
@@ -29,6 +32,7 @@ export async function handleProductScanJob(input: {
   const result = await runProductHunterScan({
     tenantContext: input.tenantContext,
     jobId: input.jobId,
+    request: input.request,
     searchQuery: input.searchQuery,
     generateInsights: input.generateInsights,
     onProgress: async (progress, currentStep) => {

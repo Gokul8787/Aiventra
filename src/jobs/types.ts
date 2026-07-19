@@ -10,13 +10,22 @@ export type AiventraJobType =
   | "CJ_ORDER_CREATION"
   | "CJ_TRACKING_SYNC"
   | "ORDER_VALIDATION"
-  | "STALE_JOB_RECOVERY";
+  | "ORDER_CANCELLATION"
+  | "SUPPLIER_ORDER_CREATION"
+  | "SUPPLIER_CANCELLATION"
+  | "SUPPLIER_ORDER_STATUS_SYNC"
+  | "SUPPLIER_TRACKING_SYNC"
+  | "SHOPIFY_FULFILMENT"
+  | "STALE_JOB_RECOVERY"
+  | "RECOVERY_RETRY"
+  | "DEAD_LETTER_REPLAY";
 
 export type JobType = AiventraJobType;
 
 export type JobQueueName =
   | "aiventra-jobs"
   | "aiventra-cj"
+  | "aiventra-shopify"
   | "aiventra-dead-letter";
 
 export type JobMessage<

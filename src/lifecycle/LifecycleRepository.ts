@@ -20,12 +20,6 @@ const NEXT_STAGE: Partial<Record<ProductLifecycleStage, ProductLifecycleStage>> 
   SELLING: "SCALING",
 };
 
-type LifecycleRow = {
-  current_stage: ProductLifecycleStage;
-  lifecycle_status: ProductLifecycleStatus | null;
-  changed_at: string;
-};
-
 type LifecycleHistoryRow = {
   from_stage: ProductLifecycleStage | null;
   current_stage: ProductLifecycleStage;

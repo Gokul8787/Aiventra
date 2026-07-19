@@ -8,6 +8,10 @@ import {
 import { enforceRateLimit } from "@/security/rateLimiter";
 import { writeAuditLog } from "@/security/auditLogger";
 import { enqueueProductScanJob } from "@/services/jobs/enqueueProductScanJob";
+import {
+  getProductScanSearchLabel,
+  ProductScanRequestSchema,
+} from "@/services/productDiscovery/productScanRequest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +21,19 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json().catch(() => ({}));
+    const parsedScanRequest = ProductScanRequestSchema.safeParse(body);
+
+    if (!parsedScanRequest.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Invalid product scan request.",
+          errors: parsedScanRequest.error.flatten(),
+        },
+        { status: 400 }
+      );
+    }
+
     context = await requireApiContext(request, "product_scan.run");
 
     await enforceRateLimit(`user:${context.user.id}`, {
@@ -27,7 +44,8 @@ export async function POST(request: Request) {
 
     const result = await enqueueProductScanJob({
       tenantContext: context.tenantContext,
-      searchQuery: String(body.searchQuery || "pet"),
+      request: parsedScanRequest.data,
+      searchQuery: getProductScanSearchLabel(parsedScanRequest.data),
       generateInsights:
         typeof body.generateInsights === "boolean"
           ? body.generateInsights
@@ -49,6 +67,7 @@ export async function POST(request: Request) {
         jobId: result.jobId,
         queueMessageId: result.queueMessageId,
         status: result.status,
+        request: parsedScanRequest.data,
         tenantContext: context.tenantContext,
       },
       { status: 202 }

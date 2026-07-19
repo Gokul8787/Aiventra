@@ -10,12 +10,29 @@ import {
   PRODUCT_LIFECYCLE_LABELS,
   ProductLifecycleStage,
 } from "@/lifecycle/ProductLifecycle";
+import { DISCOVERY_CATEGORIES } from "@/services/productDiscovery/discoveryConfig";
+
+type DiscoveryMode = "broad" | "category" | "keyword";
+
+type CJDiscoveryStats = {
+  queriesCompleted: number;
+  queriesPlanned: number;
+  categoriesCovered: number;
+  rawProducts: number;
+  uniqueProducts: number;
+  passedFirstFilter: number;
+  rejectedCount: number;
+};
 
 type SourceStatus = {
   name: string;
   status: "success" | "failed" | "skipped";
   count: number;
   error?: string;
+  metadata?: {
+    stats?: CJDiscoveryStats;
+    rejectedCount?: number;
+  };
 };
 
 type RecentScan = {
@@ -88,6 +105,11 @@ export default function Home() {
   const [sources, setSources] = useState<SourceStatus[]>([]);
   const [providerHealth, setProviderHealth] = useState<ProviderHealth[]>([]);
   const [loading, setLoading] = useState(false);
+  const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>("broad");
+  const [selectedCategory, setSelectedCategory] = useState(
+    DISCOVERY_CATEGORIES[0]?.id || "home-kitchen"
+  );
+  const [keyword, setKeyword] = useState("");
   const [totalProducts, setTotalProducts] = useState(0);
   const [recommendedProducts, setRecommendedProducts] = useState(0);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -164,7 +186,11 @@ export default function Home() {
         method: "POST",
         headers: getRequestHeaders(tenantContext),
         body: JSON.stringify({
-          searchQuery: "pet",
+          mode: discoveryMode,
+          categoryId:
+            discoveryMode === "category" ? selectedCategory : undefined,
+          keyword:
+            discoveryMode === "keyword" ? keyword.trim() : undefined,
         }),
       });
 
@@ -192,7 +218,7 @@ export default function Home() {
       );
       setLoading(false);
     }
-  }, [tenantContext]);
+  }, [discoveryMode, keyword, selectedCategory, tenantContext]);
 
   const loadSavedDashboard = useCallback(async () => {
     try {
@@ -427,6 +453,11 @@ export default function Home() {
   const bestProduct = products[0];
   const bestDecision = bestProduct ? getAIDecision(bestProduct) : undefined;
   const lifecycleCounts = getLifecycleCounts(products);
+  const cjDiscoveryStats = sources.find(
+    (source) => source.name === "CJ Dropshipping"
+  )?.metadata?.stats;
+  const canRunScan =
+    !loading && (discoveryMode !== "keyword" || keyword.trim().length >= 2);
 
   return (
     <main className="min-h-screen bg-slate-950 p-6 text-white">
@@ -514,11 +545,87 @@ export default function Home() {
           </div>
         </section>
 
-        <div className="mt-10 grid gap-4 md:grid-cols-3">
+        <section className="mt-10 rounded-2xl bg-slate-900 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold">Product Discovery</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Current mode:{" "}
+                {discoveryMode === "broad"
+                  ? "Broad market"
+                  : discoveryMode === "category"
+                    ? "Category"
+                    : "Keyword"}
+              </p>
+            </div>
+
+            <div className="grid w-full gap-3 md:w-auto md:grid-cols-3">
+              {([
+                ["broad", "Broad market"],
+                ["category", "Category"],
+                ["keyword", "Keyword"],
+              ] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setDiscoveryMode(mode)}
+                  className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                    discoveryMode === mode
+                      ? "bg-blue-600 text-white"
+                      : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {discoveryMode !== "broad" && (
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              {discoveryMode === "category" && (
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-300">
+                    Category
+                  </span>
+                  <select
+                    value={selectedCategory}
+                    onChange={(event) => setSelectedCategory(event.target.value)}
+                    className="mt-2 w-full rounded-xl bg-slate-800 px-4 py-3 text-white"
+                  >
+                    {DISCOVERY_CATEGORIES.filter(
+                      (category) => category.enabled
+                    ).map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {discoveryMode === "keyword" && (
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-300">
+                    Keyword
+                  </span>
+                  <input
+                    value={keyword}
+                    onChange={(event) => setKeyword(event.target.value)}
+                    placeholder="portable blender"
+                    className="mt-2 w-full rounded-xl bg-slate-800 px-4 py-3 text-white placeholder:text-slate-500"
+                  />
+                </label>
+              )}
+            </div>
+          )}
+        </section>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
           <button
             onClick={runAI}
-            disabled={loading}
-            className="rounded-xl bg-blue-600 px-6 py-3 font-semibold hover:bg-blue-500"
+            disabled={!canRunScan}
+            className="rounded-xl bg-blue-600 px-6 py-3 font-semibold hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? "Scan Queued..." : "🚀 Run Product Hunter"}
           </button>
@@ -652,6 +759,35 @@ export default function Home() {
               </div>
             ))}
           </div>
+
+          {cjDiscoveryStats && (
+            <div className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+              <CompactStat
+                label="CJ queries"
+                value={`${cjDiscoveryStats.queriesCompleted}/${cjDiscoveryStats.queriesPlanned}`}
+              />
+              <CompactStat
+                label="Categories"
+                value={String(cjDiscoveryStats.categoriesCovered)}
+              />
+              <CompactStat
+                label="Raw products"
+                value={String(cjDiscoveryStats.rawProducts)}
+              />
+              <CompactStat
+                label="Unique products"
+                value={String(cjDiscoveryStats.uniqueProducts)}
+              />
+              <CompactStat
+                label="Passed filter"
+                value={String(cjDiscoveryStats.passedFirstFilter)}
+              />
+              <CompactStat
+                label="AI recommended"
+                value={String(recommendedProducts)}
+              />
+            </div>
+          )}
 
           <div className="mt-8 border-t border-slate-800 pt-6">
             <div className="flex flex-wrap items-center justify-between gap-3">

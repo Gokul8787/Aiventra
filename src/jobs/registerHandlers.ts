@@ -1,9 +1,21 @@
 import type { TenantContext } from "@/context/storeContext";
 import type { JobMessage } from "@/jobs/types";
+import {
+  getProductScanSearchLabel,
+  parseProductScanRequest,
+} from "@/services/productDiscovery/productScanRequest";
 import { registerJobHandler } from "./handlerRegistry";
 import { cjShippingQuoteHandler } from "./handlers/cjShippingQuoteHandler";
+import { deadLetterReplayHandler } from "./handlers/deadLetterReplayHandler";
+import { orderCancellationHandler } from "./handlers/orderCancellationHandler";
 import { orderValidationHandler } from "./handlers/orderValidationHandler";
 import { handleProductScanJob } from "./handlers/productScanJobHandler";
+import { recoveryRetryHandler } from "./handlers/recoveryRetryHandler";
+import { shopifyFulfilmentHandler } from "./handlers/shopifyFulfilmentHandler";
+import { supplierCancellationHandler } from "./handlers/supplierCancellationHandler";
+import { supplierOrderCreationHandler } from "./handlers/supplierOrderCreationHandler";
+import { supplierOrderStatusHandler } from "./handlers/supplierOrderStatusHandler";
+import { supplierTrackingSyncHandler } from "./handlers/supplierTrackingSyncHandler";
 
 let registered = false;
 
@@ -32,10 +44,20 @@ export function registerJobHandlers() {
     jobType: "PRODUCT_SCAN",
 
     async handle({ message }) {
+      const request = parseProductScanRequest(
+        message.payload.request || {
+          mode: message.payload.mode || "broad",
+          categoryId: message.payload.categoryId,
+          keyword: message.payload.keyword,
+        }
+      );
       const resultReference = await handleProductScanJob({
         tenantContext: tenantContextFromMessage(message),
         jobId: message.jobId,
-        searchQuery: String(message.payload.searchQuery ?? "pet"),
+        request,
+        searchQuery: String(
+          message.payload.searchQuery || getProductScanSearchLabel(request)
+        ),
         generateInsights:
           typeof message.payload.generateInsights === "boolean"
             ? message.payload.generateInsights
@@ -49,7 +71,15 @@ export function registerJobHandlers() {
   });
 
   registerJobHandler(cjShippingQuoteHandler);
+  registerJobHandler(deadLetterReplayHandler);
+  registerJobHandler(orderCancellationHandler);
   registerJobHandler(orderValidationHandler);
+  registerJobHandler(recoveryRetryHandler);
+  registerJobHandler(shopifyFulfilmentHandler);
+  registerJobHandler(supplierCancellationHandler);
+  registerJobHandler(supplierOrderCreationHandler);
+  registerJobHandler(supplierOrderStatusHandler);
+  registerJobHandler(supplierTrackingSyncHandler);
 
   registered = true;
 }

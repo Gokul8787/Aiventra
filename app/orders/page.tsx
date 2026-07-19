@@ -36,7 +36,7 @@ export default async function OrdersPage() {
           </p>
         </div>
 
-        <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+        <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-7">
           <Summary label="Today's Orders" value={String(todaysOrders.length)} />
           <Summary
             label="Pending"
@@ -50,6 +50,14 @@ export default async function OrdersPage() {
             value={String(
               orders.filter((order) => order.status === "awaiting_fulfilment")
                 .length
+            )}
+          />
+          <Summary
+            label="Needs Approval"
+            value={String(
+              orders.filter(
+                (order) => order.status === "awaiting_fulfilment_approval"
+              ).length
             )}
           />
           <Summary

@@ -17,6 +17,18 @@ export type QueuedJobMessage = {
   message: JobMessage;
 };
 
+export function isQueueUnavailableError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return (
+    message.includes("Supabase Queues/pgmq is not available") ||
+    message.includes("Invalid schema: pgmq_public") ||
+    message.includes("function public.enqueue_job_message") ||
+    message.includes("function public.read_job_messages") ||
+    message.includes("schema cache")
+  );
+}
+
 export async function enqueueJobMessage(input: {
   queueName: JobQueueName;
   jobId: string;
@@ -41,14 +53,11 @@ export async function enqueueJobMessage(input: {
     createdAt: new Date().toISOString(),
   };
 
-  const { data, error } = await supabaseAdmin.schema("pgmq_public").rpc(
-    "send",
-    {
-      queue_name: input.queueName,
-      message,
-      sleep_seconds: input.delaySeconds || 0,
-    }
-  );
+  const { data, error } = await supabaseAdmin.rpc("enqueue_job_message", {
+    queue_name: input.queueName,
+    message,
+    sleep_seconds: input.delaySeconds || 0,
+  });
 
   if (error) {
     throw new Error(`Failed to enqueue ${input.jobType}: ${error.message}`);
@@ -62,14 +71,11 @@ export async function readJobMessages(input: {
   limit?: number;
   visibilityTimeoutSeconds?: number;
 }): Promise<QueuedJobMessage[]> {
-  const { data, error } = await supabaseAdmin.schema("pgmq_public").rpc(
-    "read",
-    {
-      queue_name: input.queueName,
-      sleep_seconds: input.visibilityTimeoutSeconds || 300,
-      n: input.limit || 1,
-    }
-  );
+  const { data, error } = await supabaseAdmin.rpc("read_job_messages", {
+    queue_name: input.queueName,
+    visibility_timeout_seconds: input.visibilityTimeoutSeconds || 300,
+    message_count: input.limit || 1,
+  });
 
   if (error) {
     throw new Error(`Failed to read ${input.queueName}: ${error.message}`);
@@ -85,7 +91,7 @@ export async function archiveQueueMessage(input: {
   queueName: JobQueueName;
   messageId: number;
 }): Promise<void> {
-  const { error } = await supabaseAdmin.schema("pgmq_public").rpc("archive", {
+  const { error } = await supabaseAdmin.rpc("archive_job_message", {
     queue_name: input.queueName,
     message_id: input.messageId,
   });
@@ -99,7 +105,7 @@ export async function deleteQueueMessage(input: {
   queueName: JobQueueName;
   messageId: number;
 }): Promise<void> {
-  const { error } = await supabaseAdmin.schema("pgmq_public").rpc("delete", {
+  const { error } = await supabaseAdmin.rpc("delete_job_message", {
     queue_name: input.queueName,
     message_id: input.messageId,
   });

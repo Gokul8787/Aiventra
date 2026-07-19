@@ -12,6 +12,7 @@ export type Permission =
   | "dashboard.read"
   | "products.read"
   | "orders.read"
+  | "orders.fulfilment.approve"
   | "product_scan.run"
   | "listing.generate"
   | "shopify.publish_draft"

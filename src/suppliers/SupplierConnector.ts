@@ -1,7 +1,12 @@
 import type {
   SupplierCapability,
+  SupplierCancellationResult,
   SupplierInventoryInput,
   SupplierInventoryResult,
+  SupplierOrderCreationInput,
+  SupplierOrderCreationResult,
+  SupplierOrderStatusResult,
+  SupplierTrackingResult,
   SupplierPriceInput,
   SupplierPriceResult,
   SupplierProvider,
@@ -28,4 +33,14 @@ export interface SupplierConnector {
   getShippingQuote(
     input: SupplierShippingQuoteInput
   ): Promise<SupplierShippingQuoteResult>;
+
+  createOrder(
+    input: SupplierOrderCreationInput
+  ): Promise<SupplierOrderCreationResult>;
+
+  getOrderStatus(externalOrderId: string): Promise<SupplierOrderStatusResult>;
+
+  getTracking(externalOrderId: string): Promise<SupplierTrackingResult>;
+
+  cancelOrder(externalOrderId: string): Promise<SupplierCancellationResult>;
 }

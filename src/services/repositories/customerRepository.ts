@@ -3,6 +3,7 @@ import "server-only";
 import type { TenantContext } from "@/context/storeContext";
 import { tenantColumns } from "@/context/storeContext";
 import type { CommerceCustomer } from "@/orders/types";
+import { redactSensitiveData } from "@/security/redactSensitiveData";
 import { supabaseAdmin } from "@/services/supabase/admin";
 
 type CustomerRow = {
@@ -47,7 +48,7 @@ export async function upsertCustomer(input: {
     last_name: input.lastName || null,
     phone: input.phone || null,
     address: input.address || {},
-    raw_data: input.rawData || {},
+    raw_data: redactSensitiveData(input.rawData || {}),
     updated_at: new Date().toISOString(),
   };
 

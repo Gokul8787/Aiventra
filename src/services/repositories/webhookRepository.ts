@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { TenantContext } from "@/context/storeContext";
+import { redactSensitiveData } from "@/security/redactSensitiveData";
 import { supabaseAdmin } from "@/services/supabase/admin";
 
 export type WebhookRecordResult = {
@@ -73,7 +74,7 @@ export async function recordWebhookEvent(input: {
     external_id: input.externalId,
     event_id: input.eventId || null,
     shop_domain: input.shopDomain || null,
-    payload: input.payload,
+    payload: redactSensitiveData(input.payload),
     processed: false,
   };
 

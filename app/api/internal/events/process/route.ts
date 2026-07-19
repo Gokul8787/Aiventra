@@ -1,22 +1,31 @@
 import { NextResponse } from "next/server";
 import { processEvents } from "@/services/events/processEvents";
-
-function isAuthorized(request: Request) {
-  const secret = process.env.EVENT_WORKER_SECRET;
-
-  if (!secret) return true;
-
-  return request.headers.get("x-aiventra-worker-secret") === secret;
-}
+import {
+  WorkerAuthenticationError,
+  requireWorkerSecret,
+} from "@/security/requireWorkerSecret";
 
 export async function POST(request: Request) {
-  if (!isAuthorized(request)) {
+  try {
+    requireWorkerSecret(request, "EVENT_WORKER_SECRET");
+  } catch (error) {
+    if (error instanceof WorkerAuthenticationError) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: error.message,
+        },
+        { status: error.status }
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,
-        message: "Unauthorized.",
+        message:
+          error instanceof Error ? error.message : "Worker authentication failed.",
       },
-      { status: 401 }
+      { status: 500 }
     );
   }
 

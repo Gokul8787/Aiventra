@@ -3,6 +3,8 @@ import { supabaseAdmin } from "@/services/supabase/admin";
 import type { TenantContext } from "@/context/storeContext";
 import { tenantColumns, tenantPayload } from "@/context/storeContext";
 
+// Tenant-owned rows include organisation_id and store_id via tenantColumns.
+
 export type AIJobType =
   | "product_scan"
   | "listing_generation"

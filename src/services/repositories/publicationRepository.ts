@@ -4,6 +4,8 @@ import type { TenantContext } from "@/context/storeContext";
 import { tenantColumns } from "@/context/storeContext";
 import { supabaseAdmin } from "@/services/supabase/admin";
 
+// Tenant-owned rows include organisation_id and store_id via tenantColumns.
+
 export async function saveShopifyPublication(input: {
   tenantContext: TenantContext;
   productId: string;

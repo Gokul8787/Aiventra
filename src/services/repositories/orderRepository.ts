@@ -11,7 +11,9 @@ import { calculateOrderItemProfit } from "@/orders/mapping";
 import type {
   CommerceOrderStatus,
   OrderValidationStatus,
+  OrderItemFulfilmentStatus,
 } from "@/orders/status";
+import { redactSensitiveData } from "@/security/redactSensitiveData";
 import { supabaseAdmin } from "@/services/supabase/admin";
 
 export type ParsedOrderLineItem = {
@@ -185,6 +187,45 @@ function mapOrderItem(row: OrderItemRow): CommerceOrderItem {
   };
 }
 
+function deriveOrderStatusFromItems(
+  statuses: OrderItemFulfilmentStatus[],
+  fallbackStatus: CommerceOrderStatus
+): {
+  status: CommerceOrderStatus;
+  fulfilmentStatus: string;
+} {
+  const actionableStatuses = statuses.filter(
+    (status) => !["cancelled", "refunded"].includes(status)
+  );
+
+  if (!actionableStatuses.length) {
+    return {
+      status: "fulfilled",
+      fulfilmentStatus: "fulfilled",
+    };
+  }
+
+  if (actionableStatuses.every((status) => status === "fulfilled")) {
+    return {
+      status: "fulfilled",
+      fulfilmentStatus: "fulfilled",
+    };
+  }
+
+  if (actionableStatuses.some((status) => status === "fulfilled")) {
+    return {
+      status: "partially_fulfilled",
+      fulfilmentStatus: "partially_fulfilled",
+    };
+  }
+
+  return {
+    status: fallbackStatus,
+    fulfilmentStatus:
+      fallbackStatus === "fulfilled" ? "fulfilled" : fallbackStatus,
+  };
+}
+
 async function findProductById(
   tenantContext: TenantContext,
   productId: string
@@ -278,7 +319,7 @@ export async function saveOrderFromWebhook(input: {
     placed_at: input.order.placedAt || null,
     cancelled_at: input.order.cancelledAt || null,
     refunded_at: input.order.refundedAt || null,
-    raw_data: input.order.rawData,
+    raw_data: redactSensitiveData(input.order.rawData),
     updated_at: now,
   };
 
@@ -339,7 +380,7 @@ export async function saveOrderFromWebhook(input: {
         mappedProduct?.external_product_id ||
         null,
       fulfilment_status: mappedProduct ? "pending" : "manual_review",
-      raw_data: lineItem.rawData,
+      raw_data: redactSensitiveData(lineItem.rawData),
       updated_at: now,
     });
   }
@@ -399,6 +440,121 @@ export async function getOrderById(
   return data ? mapOrder(data) : null;
 }
 
+export async function getOrderByShopifyId(
+  tenantContext: TenantContext,
+  shopifyOrderId: string
+): Promise<CommerceOrder | null> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("*")
+    .eq("organisation_id", tenantContext.organisationId)
+    .eq("store_id", tenantContext.storeId)
+    .eq("shopify_order_id", shopifyOrderId)
+    .maybeSingle<OrderRow>();
+
+  if (error) {
+    throw new Error(`Failed to load order: ${error.message}`);
+  }
+
+  return data ? mapOrder(data) : null;
+}
+
+export async function updateOrderStatus(input: {
+  tenantContext: TenantContext;
+  orderId: string;
+  status: CommerceOrderStatus;
+}): Promise<CommerceOrder | null> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .update({
+      status: input.status,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("organisation_id", input.tenantContext.organisationId)
+    .eq("store_id", input.tenantContext.storeId)
+    .eq("id", input.orderId)
+    .select("*")
+    .maybeSingle<OrderRow>();
+
+  if (error) {
+    throw new Error(`Failed to update order status: ${error.message}`);
+  }
+
+  return data ? mapOrder(data) : null;
+}
+
+export async function markOrderFulfilled(input: {
+  tenantContext: TenantContext;
+  orderId: string;
+}): Promise<CommerceOrder | null> {
+  const items = await getOrderItems(input.tenantContext, input.orderId);
+
+  return markOrderItemsFulfilled({
+    tenantContext: input.tenantContext,
+    orderId: input.orderId,
+    orderItemIds: items.map((item) => item.id),
+  });
+}
+
+export async function markOrderItemsFulfilled(input: {
+  tenantContext: TenantContext;
+  orderId: string;
+  orderItemIds: string[];
+}): Promise<CommerceOrder | null> {
+  if (!input.orderItemIds.length) {
+    return getOrderById(input.tenantContext, input.orderId);
+  }
+
+  const now = new Date().toISOString();
+
+  const { error: itemError } = await supabaseAdmin
+    .from("order_items")
+    .update({
+      fulfilment_status: "fulfilled",
+      updated_at: now,
+    })
+    .eq("organisation_id", input.tenantContext.organisationId)
+    .eq("store_id", input.tenantContext.storeId)
+    .eq("order_id", input.orderId)
+    .in("id", input.orderItemIds)
+    .not("fulfilment_status", "in", "(cancelled,refunded)");
+
+  if (itemError) {
+    throw new Error(`Failed to update order items as fulfilled: ${itemError.message}`);
+  }
+
+  const refreshedItems = await getOrderItems(input.tenantContext, input.orderId);
+  const currentOrder = await getOrderById(input.tenantContext, input.orderId);
+
+  if (!currentOrder) {
+    return null;
+  }
+
+  const nextState = deriveOrderStatusFromItems(
+    refreshedItems.map((item) => item.fulfilmentStatus),
+    currentOrder.status
+  );
+
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .update({
+      status: nextState.status,
+      fulfilment_status: nextState.fulfilmentStatus,
+      updated_at: now,
+    })
+    .eq("organisation_id", input.tenantContext.organisationId)
+    .eq("store_id", input.tenantContext.storeId)
+    .eq("id", input.orderId)
+    .select("*")
+    .maybeSingle<OrderRow>();
+
+  if (error) {
+    throw new Error(`Failed to update order fulfilment state: ${error.message}`);
+  }
+
+  return data ? mapOrder(data) : null;
+}
+
 export async function updateOrderStatusByShopifyId(input: {
   tenantContext: TenantContext;
   shopifyOrderId: string;
@@ -414,7 +570,7 @@ export async function updateOrderStatusByShopifyId(input: {
 
   if (input.refundedAt) updates.refunded_at = input.refundedAt;
   if (input.cancelledAt) updates.cancelled_at = input.cancelledAt;
-  if (input.rawData) updates.raw_data = input.rawData;
+  if (input.rawData) updates.raw_data = redactSensitiveData(input.rawData);
 
   const { data, error } = await supabaseAdmin
     .from("orders")

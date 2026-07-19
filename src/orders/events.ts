@@ -8,6 +8,11 @@ export const ORDER_EVENTS = {
   fulfilled: "Fulfilled",
   delivered: "Delivered",
   refunded: "Refunded",
+  refundRecorded: "RefundRecorded",
+  cancellationRequested: "OrderCancellationRequested",
+  cancellationCompleted: "CancellationCompleted",
+  cancellationReviewRequired: "CancellationReviewRequired",
+  operationsAlertCreated: "OperationsAlertCreated",
 } as const;
 
 export type OrderCommerceEvent =

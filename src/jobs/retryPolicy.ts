@@ -17,6 +17,8 @@ export function classifyJobError(error: unknown): RetryClassification {
     "503",
     "504",
     "temporarily unavailable",
+    "rate-limit permit",
+    "permit is unavailable",
     "connection reset",
   ];
 

@@ -30,7 +30,9 @@ export class ReviewsEngine implements IntelligenceEngine<ReviewAnalysis> {
   readonly enabled = true;
   readonly required = true;
 
-  execute(_product: Product): ReviewAnalysis {
+  execute(product: Product): ReviewAnalysis {
+    void product;
+
     return analyzeReviews({
       averageRating: 4.6,
       reviewCount: 850,

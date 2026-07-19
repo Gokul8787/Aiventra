@@ -228,6 +228,64 @@ export async function getProductSupplierMappings(
     });
 }
 
+export async function getSupplierMappingById(
+  context: TenantContext,
+  mappingId: string
+): Promise<SupplierMappingWithAccountRecord | null> {
+  const { data, error } = await supabaseAdmin
+    .from("supplier_product_mappings")
+    .select(
+      `
+        id,
+        product_id,
+        supplier_account_id,
+        supplier_product_id,
+        supplier_variant_id,
+        supplier_sku,
+        warehouse_id,
+        shipping_method_id,
+        preferred,
+        supplier_accounts!inner (
+          provider,
+          name,
+          priority,
+          status
+        )
+      `
+    )
+    .eq("organisation_id", context.organisationId)
+    .eq("store_id", context.storeId)
+    .eq("id", mappingId)
+    .eq("active", true)
+    .eq("supplier_accounts.status", "active")
+    .maybeSingle<SupplierMappingRow>();
+
+  if (error) {
+    throw new Error(`Failed to load supplier mapping: ${error.message}`);
+  }
+
+  if (!data) return null;
+
+  const account = Array.isArray(data.supplier_accounts)
+    ? data.supplier_accounts[0]
+    : data.supplier_accounts;
+
+  return {
+    id: data.id,
+    productId: data.product_id,
+    supplierAccountId: data.supplier_account_id,
+    supplierProductId: data.supplier_product_id,
+    supplierVariantId: data.supplier_variant_id || undefined,
+    supplierSku: data.supplier_sku || undefined,
+    warehouseId: data.warehouse_id || undefined,
+    shippingMethodId: data.shipping_method_id || undefined,
+    preferred: data.preferred,
+    provider: mapProvider(account.provider),
+    supplierName: account.name,
+    accountPriority: account.priority,
+  };
+}
+
 export function toSupplierProductReference(
   mapping: SupplierMappingRecord
 ): SupplierProductReference {
@@ -482,7 +540,14 @@ export async function upsertPublishedProductSupplierMapping(input: {
     context: input.context,
     provider: "cj",
     name: "CJ Dropshipping Main",
-    capabilities: ["inventory", "pricing", "shipping_quote"],
+    capabilities: [
+      "inventory",
+      "pricing",
+      "shipping_quote",
+      "order_creation",
+      "order_status",
+      "cancellation",
+    ],
   });
 
   return upsertSupplierProductMapping({

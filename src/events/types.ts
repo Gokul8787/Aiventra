@@ -21,9 +21,15 @@ export type DomainEventType =
   | "SupplierOrderCreated"
   | "TrackingReceived"
   | "FulfilmentRequested"
+  | "FulfilmentCreated"
   | "Fulfilled"
   | "Delivered"
   | "Refunded"
+  | "RefundRecorded"
+  | "OrderCancellationRequested"
+  | "CancellationCompleted"
+  | "CancellationReviewRequired"
+  | "OperationsAlertCreated"
   | "EventFailed";
 
 export interface DomainEvent<TPayload = Record<string, unknown>> {
